@@ -1,0 +1,78 @@
+# =============================================
+# AI Agent Platform - .gitignore
+# =============================================
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+*.egg
+*.whl
+dist/
+build/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Testing & Linting
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.cursorrules
+.windsurfrules
+
+# Environment & Secrets
+.env
+*.env.local
+.env.*
+!.env.example
+
+# Databases
+*.db
+*.sqlite3
+
+# Logs
+*.log
+
+# Node
+node_modules/
+
+# Runtime data
+mind-clone/persist/
+
+# OS artifacts
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Screenshots (generated at runtime)
+desktop_*.png
+
+# Session data
+.desktop_sessions/
+council_sessions/
+
+# Backup folders
+_backup_*/
+
+# External dependencies
+_external/
+
+# Build outputs
+mind-clone-ui/dist/
+*.tsbuildinfo
+
+# Claude Code working data
+.claude/

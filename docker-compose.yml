@@ -1,0 +1,95 @@
+version: '3.8'
+
+services:
+  # Main AI Agent API
+  mind-clone:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: mind-clone-agent
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - KIMI_API_KEY=${KIMI_API_KEY}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - WEBHOOK_BASE_URL=${WEBHOOK_BASE_URL}
+      - MIND_CLONE_DB_PATH=/app/data/mind_clone.db
+      - POLICY_PACK=${POLICY_PACK:-dev}
+      - AUTONOMY_MODE=${AUTONOMY_MODE:-openclaw_max}
+      - APPROVAL_GATE_MODE=${APPROVAL_GATE_MODE:-off}
+      - DESKTOP_CONTROL_ENABLED=${DESKTOP_CONTROL_ENABLED:-false}
+      - WORKFLOW_V2_ENABLED=true
+      - CRON_ENABLED=true
+    volumes:
+      - ./data:/app/data
+      - ./persist:/app/persist
+      - ./workspaces:/app/workspaces
+    networks:
+      - agent-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Optional: Redis for caching/sessions (uncomment if needed)
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: mind-clone-redis
+  #   restart: unless-stopped
+  #   volumes:
+  #     - redis_data:/data
+  #   networks:
+  #     - agent-network
+
+  # Optional: PostgreSQL for production database (uncomment if needed)
+  # postgres:
+  #   image: postgres:16-alpine
+  #   container_name: mind-clone-postgres
+  #   restart: unless-stopped
+  #   environment:
+  #     - POSTGRES_USER=agent
+  #     - POSTGRES_PASSWORD=${DB_PASSWORD}
+  #     - POSTGRES_DB=mind_clone
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   networks:
+  #     - agent-network
+
+  # Development service with hot reload
+  mind-clone-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    container_name: mind-clone-dev
+    profiles:
+      - dev
+    ports:
+      - "8000:8000"
+    environment:
+      - KIMI_API_KEY=${KIMI_API_KEY}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - WEBHOOK_BASE_URL=${WEBHOOK_BASE_URL}
+      - MIND_CLONE_DB_PATH=/app/data/mind_clone.db
+      - POLICY_PACK=dev
+      - AUTONOMY_MODE=standard
+      - APPROVAL_GATE_MODE=off
+    volumes:
+      - ./src:/app/src:ro
+      - ./data:/app/data
+      - ./persist:/app/persist
+    networks:
+      - agent-network
+    command: uvicorn mind_clone.api.app:create_app --host 0.0.0.0 --port 8000 --reload
+
+networks:
+  agent-network:
+    driver: bridge
+
+volumes:
+  redis_data:
+  postgres_data:

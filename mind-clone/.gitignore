@@ -1,0 +1,9 @@
+.env
+*.db
+__pycache__/
+*.pyc
+.vscode/
+*.sqlite3
+persist/memory_vault/
+*.db
+server.*.log

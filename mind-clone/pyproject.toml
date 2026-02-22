@@ -1,0 +1,90 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mind-clone"
+version = "0.1.0"
+description = "Mind Clone Agent - A sovereign AI agent platform"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.11"
+authors = [
+    {name = "Mind Clone Team"}
+]
+keywords = ["ai", "agent", "llm", "automation", "telegram", "fastapi"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.23.0",
+    "sqlalchemy>=2.0.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "python-telegram-bot>=20.0",
+    "httpx>=0.24.0",
+    "requests>=2.31.0",
+    "numpy>=1.24.0",
+    "beautifulsoup4>=4.12.0",
+    "duckduckgo-search>=3.0.0",
+    "python-dotenv>=1.0.0",
+    "pypdf>=3.0.0",
+    "python-dateutil>=2.8.0",
+    "trafilatura>=1.6.0",
+    # Optional dependencies
+    "selenium>=4.15.0",
+    "pyautogui>=0.9.54",
+    "mss>=9.0.0",
+    "pillow>=10.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0",
+    "ruff>=0.1.0",
+    "mypy>=1.6.0",
+    "black>=23.0.0",
+]
+
+[project.scripts]
+mind-clone = "mind_clone.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/mind-clone/agent"
+Repository = "https://github.com/mind-clone/agent"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mind_clone"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+select = ["E", "F", "I", "W", "N", "UP", "B", "C4", "SIM"]
+ignore = ["E501"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"

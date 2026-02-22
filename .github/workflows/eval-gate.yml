@@ -1,0 +1,38 @@
+name: Eval Gate
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  eval-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r mind-clone/requirements.txt
+
+      - name: Compile check
+        run: python -m py_compile mind-clone/mind_clone_agent.py
+
+      - name: Run release gate
+        env:
+          MIND_CLONE_DB_PATH: ${{ runner.temp }}/mind-clone-ci/mind_clone.db
+          EVAL_HARNESS_ENABLED: "true"
+          RELEASE_GATE_MIN_PASS_RATE: "1.0"
+          RELEASE_GATE_REQUIRE_ZERO_FAILS: "true"
+        run: python mind-clone/scripts/release_gate_check.py
