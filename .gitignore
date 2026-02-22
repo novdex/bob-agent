@@ -73,6 +73,11 @@ _external/
 # Build outputs
 mind-clone-ui/dist/
 *.tsbuildinfo
+vite.config.js
+vite.config.d.ts
+
+# User preferences (runtime)
+user_preferences.txt
 
 # Claude Code working data
 .claude/
