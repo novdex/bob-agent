@@ -1,246 +1,135 @@
 # AI Agent Platform
 
-A multi-component AI Agent Platform centered around the "Mind Clone Agent" — a sovereign AI agent that can reason, learn, act autonomously, and generalize across domains.
+A multi-component AI Agent Platform centered around **Mind Clone Agent (Bob)** — a sovereign AI agent that can reason, learn, act autonomously, and generalize across domains. Built on 8 intelligence pillars toward AGI.
 
-## 🏗️ Architecture
+## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              AI AGENT PLATFORM                               │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────────────┐  │
-│  │   mind-clone    │◄──►│  mind-clone-ui  │    │   Multi-Model           │  │
-│  │   (Agent Core)  │    │  (Ops Console)  │    │   Orchestrator          │  │
-│  │                 │    │                 │    │   (Cost Router)         │  │
-│  │ • Kimi K2.5     │    │ • React + Vite  │    │                         │  │
-│  │ • FastAPI       │    │ • TypeScript    │    │ • Gemini (FREE)         │  │
-│  │ • SQLite        │    │ • 7 Panels      │    │ • Codex (OpenAI)        │  │
-│  │ • 25+ Tools     │    │                 │    │ • Claude (Anthropic)    │  │
-│  │ • Telegram Bot  │    │ • Runtime       │    │ • Kimi (Moonshot)       │  │
-│  │                 │    │ • Chat          │    │                         │  │
-│  │                 │    │ • Tasks         │    │                         │  │
-│  │                 │    │ • Approvals     │    │                         │  │
-│  └────────┬────────┘    └─────────────────┘    └─────────────────────────┘  │
-│           │                                                                  │
-│           ▼                                                                  │
-│  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                         EXTERNAL SERVICES                            │   │
-│  │  • Moonshot AI API (Kimi K2.5)  • Telegram Bot API                   │   │
-│  │  • DuckDuckGo Search            • Gmail SMTP                         │   │
-│  │  • GloVe Embeddings (local)     • Selenium/WebDriver                 │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
+User (Telegram / API) --> FastAPI (:8000) --> Agent Loop --> Kimi K2.5 LLM --> Tool Execution --> Response
+                                                            |  failover: Gemini -> GPT -> Claude
+                                                            v
+                                              SQLite + GloVe Semantic Memory
 ```
 
-## 📁 Project Structure
+**Three components:**
+
+| Component | Tech | Purpose |
+|-----------|------|---------|
+| **mind-clone/** | Python, FastAPI, SQLAlchemy | Agent core (reasoning, tools, memory, tasks) |
+| **mind-clone-ui/** | React 18, TypeScript, Vite | Ops console (runtime, chat, tasks, approvals) |
+| **docs/** | Markdown | Vision, API reference, deployment guide |
+
+## Project Structure
 
 ```
 ai-agent-platform/
-├── pyproject.toml              # Python packaging configuration
-├── Dockerfile                  # Container image definition
-├── docker-compose.yml          # Full stack orchestration
-├── README.md                   # This file
-│
-├── src/
-│   ├── mind_clone/             # Main agent package
-│   │   ├── __init__.py
-│   │   ├── __main__.py         # CLI entry point
-│   │   ├── config.py           # Settings & environment
-│   │   ├── database/
-│   │   │   ├── models.py       # 40+ SQLAlchemy models
-│   │   │   └── session.py      # DB connection
-│   │   ├── agent/
-│   │   │   ├── llm.py          # Kimi API client
-│   │   │   ├── memory.py       # Conversation & vectors
-│   │   │   ├── identity.py     # Identity kernel
-│   │   │   └── loop.py         # Main agent loop
-│   │   ├── tools/
-│   │   │   ├── schemas.py      # Tool definitions
-│   │   │   ├── registry.py     # Tool dispatch
-│   │   │   ├── files.py        # File operations
-│   │   │   ├── web.py          # Web search/scrape
-│   │   │   ├── code.py         # Code execution
-│   │   │   └── email.py        # SMTP tools
-│   │   └── api/
-│   │       ├── app.py          # FastAPI factory
-│   │       └── routes/         # API endpoints
-│   │
-│   └── orchestrators/          # Multi-model router
-│       ├── models.py           # Model configurations
-│       └── router.py           # Task routing logic
-│
-├── mind-clone-ui/              # React frontend
-│   ├── src/
+├── .github/workflows/         # CI/CD (lint, test, security, build, release)
+├── docs/
+│   ├── AGENTS.md              # Worker rules & protocols
+│   ├── API.md                 # API endpoint reference
+│   ├── DEPLOYMENT.md          # Production deployment guide
+│   ├── VISION.md              # AGI manifesto & 8 pillars
+│   └── archive/               # Historical documentation
+├── mind-clone/
+│   ├── mind_clone_agent.py    # Production monolith (~25K lines)
+│   ├── src/mind_clone/        # Modular package (migration target)
+│   ├── scripts/               # 21+ bob-* developer tools
+│   ├── tests/                 # Unit + integration tests
+│   ├── persist/               # Runtime data (gitignored)
+│   ├── pyproject.toml
+│   └── requirements.txt
+├── mind-clone-ui/
+│   ├── src/                   # React TypeScript source
 │   ├── package.json
-│   └── dist/                   # Built assets
-│
-├── tests/                      # Test suite
-│   ├── unit/
-│   └── integration/
-│
-└── .github/workflows/          # CI/CD
-    └── ci.yml
+│   └── vite.config.ts
+├── pyproject.toml             # Root package config
+├── Dockerfile
+├── docker-compose.yml
+└── CLAUDE.md                  # AI assistant guidance
 ```
 
-## 🚀 Quick Start
+## Quick Start
 
-### Installation
+### Prerequisites
+
+- Python 3.11+
+- Node.js 18+ (for frontend)
+
+### Setup
 
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/ai-agent-platform.git
-cd ai-agent-platform
+# Install backend dependencies
+cd mind-clone
+pip install -r requirements.txt
+cp .env.example .env
+# Edit .env with your API keys (KIMI_API_KEY required)
 
-# Install dependencies
-pip install -e ".[dev]"
+# Start the agent (production monolith)
+python mind_clone_agent.py
+# Server: http://localhost:8000
+# UI: http://localhost:8000/ui
 
-# Or with Docker
-docker-compose up -d
+# Or use the modular package
+cd ..
+pip install -e .
+python -m mind_clone --web
 ```
 
-### Configuration
-
-Create a `.env` file:
+### Frontend Development
 
 ```bash
-# Required
-KIMI_API_KEY=your_moonshot_key
-TELEGRAM_BOT_TOKEN=your_bot_token
-WEBHOOK_BASE_URL=https://your-domain.com
-
-# Optional
-POLICY_PACK=dev                    # dev | staging | prod
-AUTONOMY_MODE=openclaw_max         # openclaw_max | standard
-APPROVAL_GATE_MODE=off             # off | balanced | strict
+cd mind-clone-ui
+npm install
+npm run dev          # Dev server on http://localhost:5173
+npm run build        # Production build -> dist/
 ```
 
-### Running
+### Docker
 
 ```bash
-# Initialize database
-python -m mind_clone --init-db
-
-# Run the server
-python -m mind_clone
-
-# Or with auto-reload (development)
-python -m mind_clone --reload
+docker-compose up -d mind-clone                     # Production
+docker-compose --profile dev up -d mind-clone-dev   # Dev with hot reload
 ```
 
-### Using Docker
+## Configuration
+
+Create `mind-clone/.env` from `.env.example`. Key variables:
 
 ```bash
-# Production
-docker-compose up -d mind-clone
-
-# Development with hot reload
-docker-compose --profile dev up -d mind-clone-dev
+KIMI_API_KEY=your_moonshot_key         # Required: Moonshot AI API key
+TELEGRAM_BOT_TOKEN=your_bot_token      # Required for Telegram
+TOOL_POLICY_PROFILE=balanced           # safe | balanced | power
+AUTONOMY_MODE=openclaw_max             # openclaw_max | standard
 ```
 
-## 🔧 API Usage
+See `.env.example` for all 200+ configuration options.
 
-### Chat Endpoint
+## Testing
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/chat/ \
-  -H "Content-Type: application/json" \
-  -d '{"message": "Hello, agent!", "owner_id": 1}'
+cd mind-clone
+pytest                              # All tests
+pytest tests/unit/test_config.py    # Single file
+pytest -k test_health               # By name
+python scripts/bob_check.py         # Full compile + test + lint check
 ```
 
-### Tool Execution
+## Developer Tools
 
-```bash
-curl -X POST http://localhost:8000/api/v1/tools/execute \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tool_name": "search_web",
-    "arguments": {"query": "Python best practices"}
-  }'
-```
+21 `bob-*` scripts in `mind-clone/scripts/` for common tasks:
 
-### Health Check
+| Script | Purpose |
+|--------|---------|
+| `bob_check.py` | Run after ANY code change (compile + test + lint) |
+| `bob_find.py` | Navigate monolith sections |
+| `bob_health.py` | Check if Bob is running |
+| `bob_diag.py` | Diagnose performance issues |
+| `bob_memory.py` | Inspect memory systems |
+| `bob_tools.py` | Check tool usage and policies |
 
-```bash
-curl http://localhost:8000/health
-```
+## Documentation
 
-## 🧪 Testing
-
-```bash
-# Run all tests
-pytest
-
-# With coverage
-pytest --cov=mind_clone --cov-report=html
-
-# Specific test file
-pytest tests/unit/test_tools.py -v
-```
-
-## 🐝 Multi-Model Orchestrator
-
-Route tasks to the optimal AI model:
-
-```bash
-# Demo mode (shows what would be selected)
-python -m orchestrators "add docstrings to functions"
-
-# Force specific stack
-python -m orchestrators "refactor code" --force-stack codex
-
-# Specify complexity
-python -m orchestrators "design system" --complexity complex
-```
-
-## 📝 Development
-
-### Code Quality
-
-```bash
-# Format code
-black src/
-
-# Lint
-ruff check src/
-
-# Type check
-mypy src/
-```
-
-### Database Migrations
-
-```bash
-# Create migration
-alembic revision --autogenerate -m "description"
-
-# Apply migrations
-alembic upgrade head
-```
-
-## 🔒 Security
-
-- API keys stored in environment variables
-- No secrets in code
-- Sandbox mode for code execution
-- Approval gates for dangerous tools
-- Audit logging for all actions
-
-## 📚 Documentation
-
-- [API Documentation](http://localhost:8000/docs) (when running)
-- [Architecture Guide](docs/architecture.md)
-- [Agent Capabilities](AGENTS.md)
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests
-5. Submit a pull request
-
-## 📄 License
-
-MIT License - see LICENSE file
+- [Vision & 8 Pillars](docs/VISION.md)
+- [Worker Rules](docs/AGENTS.md)
+- [API Reference](docs/API.md)
+- [Deployment Guide](docs/DEPLOYMENT.md)

@@ -27,6 +27,7 @@ ai-agent-platform/
 │   ├── AGENTS.md              # Worker rules & protocols
 │   ├── API.md                 # API reference
 │   ├── DEPLOYMENT.md          # Deployment guide
+│   ├── archive/               # Historical documentation
 │   ├── extraction/            # Monolith extraction docs
 │   └── refactor/              # Refactoring docs
 ├── .github/workflows/         # CI/CD pipelines
@@ -81,8 +82,7 @@ bob start | bob stop | bob restart | bob status | bob chat | bob say "msg"
 
 **Data flow:** User (Telegram/API) -> FastAPI (port 8000) -> Agent Loop -> Kimi K2.5 LLM -> Tool Execution -> Result fed back to LLM -> Response -> User
 
-**Monolith claude --version
-sections** (approximate line ranges in `mind-clone/mind_clone_agent.py`):
+**Monolith sections** (approximate line ranges in `mind-clone/mind_clone_agent.py`):
 - 1-933: Imports, env vars, constants, RUNTIME_STATE, policy packs
 - 934-1599: GloVe word vectors (semantic search engine)
 - 1600-2699: Database models (70+ SQLAlchemy tables)
