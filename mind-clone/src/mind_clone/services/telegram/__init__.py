@@ -57,3 +57,44 @@ from .bot import (  # noqa: F401
     shutdown_bot,
     shutdown_telegram,
 )
+
+# --- Missing re-exports needed by services/__init__.py ---
+
+# Command handlers
+from .commands import (  # noqa: F401
+    cmd_start,
+    cmd_help,
+    cmd_status,
+    cmd_task,
+    cmd_cancel,
+    cmd_tasks,
+    cmd_approve,
+    cmd_reject,
+    cmd_approvals,
+    cmd_cron,
+    handle_message,
+)
+
+# Bot helpers
+from .bot import get_bot_application  # noqa: F401
+
+# Supervisor / cron helpers
+from .supervisors import (  # noqa: F401
+    webhook_retry_loop,
+    run_heartbeat_self_check,
+    bootstrap_cron_jobs_from_env,
+    run_due_cron_jobs_once,
+)
+
+# Dispatch helpers
+from .dispatch import (  # noqa: F401
+    run_owner_message_job,
+    should_enqueue_message,
+)
+
+# Utility helpers
+from .utils import (  # noqa: F401
+    utc_now_iso,
+    iso_after_seconds,
+    clamp_int,
+)
