@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
+import { Clock, Plus, Power, PowerOff } from "lucide-react";
 import { apiGet, apiPost } from "../../api/client";
 import type { AppContext, CronJob } from "../../types";
 import { formatApiError, requireOpsToken, requireUserContext } from "../../utils/errors";
-import { formatTimestamp } from "../../utils/formatters";
+import { formatTimestamp, formatDuration } from "../../utils/formatters";
+import { showToast } from "../../hooks/useToast";
+import { StatusBadge, ErrorAlert, EmptyState, LoadingSkeleton } from "../ui";
 
-type CronPanelProps = {
-  context: AppContext;
-};
+type CronPanelProps = { context: AppContext };
 
 export function CronPanel({ context }: CronPanelProps) {
   const [jobs, setJobs] = useState<CronJob[]>([]);
@@ -14,55 +15,40 @@ export function CronPanel({ context }: CronPanelProps) {
   const [message, setMessage] = useState("Run heartbeat self-check and summarize alerts.");
   const [intervalSeconds, setIntervalSeconds] = useState(300);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
 
   const loadJobs = async () => {
     const ctxError = requireUserContext(context) || requireOpsToken(context);
-    if (ctxError) {
-      setError(ctxError);
-      setJobs([]);
-      return;
-    }
+    if (ctxError) { setError(ctxError); setJobs([]); return; }
     try {
       const payload = await apiGet<{ ok: boolean; jobs?: CronJob[]; error?: string }>(
-        `/cron/jobs?chat_id=${encodeURIComponent(context.chatId)}&username=${encodeURIComponent(
-          context.username
-        )}&include_disabled=true&limit=40`,
-        context.token
+        `/cron/jobs?chat_id=${encodeURIComponent(context.chatId)}&username=${encodeURIComponent(context.username)}&include_disabled=true&limit=40`,
+        context.token,
       );
-      if (!payload.ok) {
-        throw new Error(payload.error || "Failed to load cron jobs.");
-      }
+      if (!payload.ok) throw new Error(payload.error || "Failed to load cron jobs.");
       setJobs(Array.isArray(payload.jobs) ? payload.jobs : []);
       setError("");
     } catch (err) {
       setError(formatApiError(err));
+    } finally {
+      setLoading(false);
     }
   };
 
   const createJob = async () => {
     const ctxError = requireUserContext(context) || requireOpsToken(context);
-    if (ctxError) {
-      setError(ctxError);
-      return;
-    }
+    if (ctxError) { setError(ctxError); return; }
     try {
       const payload = await apiPost<{ ok: boolean; error?: string }>(
         "/cron/jobs",
-        {
-          chat_id: context.chatId,
-          username: context.username,
-          name,
-          message,
-          interval_seconds: Number(intervalSeconds),
-          lane: "cron",
-        },
-        context.token
+        { chat_id: context.chatId, username: context.username, name, message, interval_seconds: Number(intervalSeconds), lane: "cron" },
+        context.token,
       );
-      if (!payload.ok) {
-        throw new Error(payload.error || "Failed to create cron job.");
-      }
+      if (!payload.ok) throw new Error(payload.error || "Failed to create cron job.");
+      showToast(`Cron job "${name}" created`, "success");
       await loadJobs();
     } catch (err) {
+      showToast(formatApiError(err), "error");
       setError(formatApiError(err));
     }
   };
@@ -70,17 +56,15 @@ export function CronPanel({ context }: CronPanelProps) {
   const disableJob = async (jobId: number) => {
     try {
       const payload = await apiPost<{ ok: boolean; error?: string }>(
-        `/cron/jobs/${jobId}/disable?chat_id=${encodeURIComponent(context.chatId)}&username=${encodeURIComponent(
-          context.username
-        )}`,
+        `/cron/jobs/${jobId}/disable?chat_id=${encodeURIComponent(context.chatId)}&username=${encodeURIComponent(context.username)}`,
         {},
-        context.token
+        context.token,
       );
-      if (!payload.ok) {
-        throw new Error(payload.error || "Failed to disable job.");
-      }
+      if (!payload.ok) throw new Error(payload.error || "Failed to disable job.");
+      showToast(`Job #${jobId} disabled`, "success");
       await loadJobs();
     } catch (err) {
+      showToast(formatApiError(err), "error");
       setError(formatApiError(err));
     }
   };
@@ -95,43 +79,82 @@ export function CronPanel({ context }: CronPanelProps) {
     <section className="panel">
       <header className="panel-head">
         <h2>Cron Control</h2>
-        <p>Requires ops token. Uses existing `/cron/jobs*` APIs.</p>
+        <p>Scheduled jobs &middot; Requires ops token</p>
       </header>
-      {error && <p className="error">{error}</p>}
+
+      {error && <ErrorAlert message={error} onRetry={() => void loadJobs()} onDismiss={() => setError("")} />}
+
+      {/* Create form */}
       <article className="subpanel">
-        <h3>Create cron job</h3>
+        <h3><Plus size={14} style={{ verticalAlign: -2 }} /> Create Cron Job</h3>
         <div className="form-grid">
-          <input value={name} onChange={(event) => setName(event.target.value)} placeholder="job name" />
-          <input
-            type="number"
-            min={60}
-            value={intervalSeconds}
-            onChange={(event) => setIntervalSeconds(Number(event.target.value))}
-          />
-          <textarea value={message} onChange={(event) => setMessage(event.target.value)} rows={2} />
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Job name" />
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <label style={{ whiteSpace: "nowrap", fontSize: "0.82rem" }}>Interval</label>
+            <input
+              type="number"
+              min={60}
+              value={intervalSeconds}
+              onChange={(e) => setIntervalSeconds(Number(e.target.value))}
+              style={{ width: 90 }}
+            />
+            <span className="muted" style={{ fontSize: "0.78rem" }}>
+              ({formatDuration(intervalSeconds)})
+            </span>
+          </div>
+          <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={2} placeholder="Job message / command" />
         </div>
         <button onClick={() => void createJob()}>Create cron job</button>
       </article>
+
+      {loading && <LoadingSkeleton variant="card" />}
+
+      {/* Job cards */}
       <article className="subpanel">
-        <h3>Jobs</h3>
-        <div className="list-scroll">
-          {jobs.length === 0 && <p className="muted">No cron jobs available.</p>}
+        <h3>Scheduled Jobs ({jobs.length})</h3>
+        {jobs.length === 0 && !loading && (
+          <EmptyState title="No cron jobs" description="Create a job above to schedule recurring commands." icon={Clock} />
+        )}
+        <div style={{ display: "grid", gap: 10 }}>
           {jobs.map((job) => (
-            <div className="list-row static" key={job.job_id}>
-              <div>
+            <div
+              key={job.job_id}
+              className="subpanel"
+              style={{ borderLeft: `3px solid ${job.enabled ? "var(--ok)" : "var(--text-dim)"}` }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                 <strong>#{job.job_id} {job.name}</strong>
-                <p className="muted">
-                  every {job.interval_seconds}s runs={job.run_count} next={formatTimestamp(job.next_run_at)}
-                </p>
-              </div>
-              <div className="row-actions">
-                <span className={`tag ${job.enabled ? "ok" : "warn"}`}>{job.enabled ? "enabled" : "disabled"}</span>
+                <StatusBadge
+                  label={job.enabled ? "enabled" : "disabled"}
+                  status={job.enabled ? "ok" : "muted"}
+                  size="sm"
+                />
                 {job.enabled && (
-                  <button className="danger" onClick={() => void disableJob(job.job_id)}>
-                    Disable
+                  <button
+                    className="ghost danger"
+                    onClick={() => void disableJob(job.job_id)}
+                    style={{ marginLeft: "auto", padding: "3px 8px", display: "flex", alignItems: "center", gap: 4, fontSize: "0.78rem" }}
+                  >
+                    <PowerOff size={12} /> Disable
                   </button>
                 )}
+                {!job.enabled && (
+                  <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 4, fontSize: "0.78rem", color: "var(--text-dim)" }}>
+                    <Power size={12} /> Inactive
+                  </span>
+                )}
               </div>
+              <div className="muted" style={{ fontSize: "0.78rem", display: "flex", flexWrap: "wrap", gap: "6px 16px" }}>
+                <span>every {formatDuration(job.interval_seconds)}</span>
+                <span>runs: {job.run_count}</span>
+                {job.next_run_at && <span>next: {formatTimestamp(job.next_run_at)}</span>}
+                {job.last_run_at && <span>last: {formatTimestamp(job.last_run_at)}</span>}
+              </div>
+              {job.last_error && (
+                <p style={{ color: "var(--danger)", fontSize: "0.78rem", margin: "6px 0 0" }}>
+                  {job.last_error}
+                </p>
+              )}
             </div>
           ))}
         </div>

@@ -57,3 +57,7 @@ export function apiGet<T>(path: string, token?: string, signal?: AbortSignal): P
 export function apiPost<T>(path: string, body: unknown, token?: string, signal?: AbortSignal): Promise<T> {
   return apiRequest<T>(path, { method: "POST", body, token, signal });
 }
+
+export function apiPatch<T>(path: string, body: unknown, token?: string, signal?: AbortSignal): Promise<T> {
+  return apiRequest<T>(path, { method: "PATCH", body, token, signal });
+}

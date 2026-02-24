@@ -1,89 +1,85 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
+import { MessageSquare } from "lucide-react";
 import { apiPost } from "../../api/client";
-import type { AppContext } from "../../types";
 import { formatApiError, requireUserContext } from "../../utils/errors";
+import { showToast } from "../../hooks/useToast";
+import { ChatMessageView } from "./chat/ChatMessage";
+import { ChatInput } from "./chat/ChatInput";
+import { TypingIndicator } from "./chat/TypingIndicator";
+import { EmptyState } from "../ui";
+import type { AppContext, ChatMessage } from "../../types";
 
-type ChatItem = { role: "user" | "assistant" | "system"; text: string; ts: number };
+type Props = { context: AppContext };
+type ChatResponse = { ok: boolean; response?: string; error?: string };
 
-type ChatPanelProps = {
-  context: AppContext;
-};
-
-export function ChatPanel({ context }: ChatPanelProps) {
-  const [input, setInput] = useState("");
-  const [messages, setMessages] = useState<ChatItem[]>([]);
+export function ChatPanel({ context }: Props) {
+  const ctxError = requireUserContext(context);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const scrollRef = useRef<HTMLDivElement>(null);
 
-  const onSend = async () => {
-    const ctxError = requireUserContext(context);
-    if (ctxError) {
-      setError(ctxError);
-      return;
-    }
-    const text = input.trim();
-    if (!text) {
-      return;
-    }
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [messages, busy]);
+
+  if (ctxError) {
+    return (
+      <section className="panel">
+        <div className="panel-head"><h2><MessageSquare size={18} /> Chat</h2></div>
+        <EmptyState title="User context required" description={ctxError} />
+      </section>
+    );
+  }
+
+  async function handleSend() {
+    const text = draft.trim();
+    if (!text || busy) return;
+
+    setMessages((m) => [...m, { role: "user", text, ts: Date.now() }]);
+    setDraft("");
     setBusy(true);
-    setError("");
-    setMessages((prev) => [...prev, { role: "user", text, ts: Date.now() }]);
+
     try {
-      const payload = await apiPost<{ ok: boolean; response?: string; error?: string }>(
-        "/chat",
-        {
-          chat_id: context.chatId,
-          username: context.username,
-          message: text,
-        }
-      );
-      if (!payload.ok) {
-        throw new Error(payload.error || "Chat call failed.");
-      }
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", text: String(payload.response || ""), ts: Date.now() },
-      ]);
-      setInput("");
+      const res = await apiPost<ChatResponse>("/chat", {
+        chat_id: Number(context.chatId),
+        message: text,
+        username: context.username,
+      });
+      if (!res.ok) throw new Error(res.error || "Chat call failed.");
+      setMessages((m) => [...m, {
+        role: "assistant",
+        text: res.response ?? "No response",
+        ts: Date.now(),
+      }]);
     } catch (err) {
-      const message = formatApiError(err);
-      setError(message);
-      setMessages((prev) => [...prev, { role: "system", text: `Error: ${message}`, ts: Date.now() }]);
+      const errMsg = formatApiError(err);
+      showToast(errMsg, "error");
+      setMessages((m) => [...m, { role: "system", text: errMsg, ts: Date.now() }]);
     } finally {
       setBusy(false);
     }
-  };
+  }
 
   return (
     <section className="panel">
-      <header className="panel-head">
-        <h2>Chat Console</h2>
-        <p>Direct request/response mode via `/chat`.</p>
-      </header>
-      {error && <p className="error">{error}</p>}
-      <div className="chat-log">
-        {messages.length === 0 && <p className="muted">No chat yet. Send a message to start.</p>}
-        {messages.map((item) => (
-          <article key={`${item.ts}-${item.role}`} className={`chat-item ${item.role}`}>
-            <header>
-              <span>{item.role}</span>
-              <time>{new Date(item.ts).toLocaleTimeString()}</time>
-            </header>
-            <p>{item.text}</p>
-          </article>
+      <div className="panel-head">
+        <h2><MessageSquare size={18} /> Chat with Bob</h2>
+        <p className="muted">Markdown rendering &middot; Enter to send</p>
+      </div>
+
+      <div className="chat-log" ref={scrollRef}>
+        {messages.length === 0 && !busy && (
+          <EmptyState icon={MessageSquare} title="Start a conversation" description="Send a message to Bob below" />
+        )}
+        {messages.map((m, i) => (
+          <ChatMessageView key={i} role={m.role} text={m.text} ts={m.ts} />
         ))}
+        {busy && <TypingIndicator />}
       </div>
-      <div className="chat-compose">
-        <textarea
-          value={input}
-          onChange={(event) => setInput(event.target.value)}
-          placeholder="Ask Bob..."
-          rows={4}
-        />
-        <button onClick={() => void onSend()} disabled={busy}>
-          {busy ? "Sending..." : "Send"}
-        </button>
-      </div>
+
+      <ChatInput value={draft} onChange={setDraft} onSend={handleSend} disabled={busy} />
     </section>
   );
 }

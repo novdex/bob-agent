@@ -42,13 +42,18 @@ export type CronJob = {
 };
 
 export type PanelKey =
+  | "dashboard"
   | "runtime"
   | "chat"
   | "tasks"
   | "approvals"
   | "cron"
   | "blackbox"
-  | "nodes";
+  | "nodes"
+  | "goals"
+  | "team"
+  | "usage"
+  | "workflows";
 
 export type PanelDef = {
   key: PanelKey;
@@ -59,4 +64,65 @@ export type AppContext = {
   chatId: string;
   username: string;
   token: string;
+};
+
+/* ── New types for additional panels ── */
+
+export type Goal = {
+  id: number;
+  title: string;
+  description: string;
+  status: string;
+  progress_pct: number;
+  priority: string;
+  task_ids: number[];
+  milestones: Array<Record<string, unknown>>;
+  created_at: string;
+};
+
+export type TeamAgent = {
+  agent_key: string;
+  display_name: string;
+  status: string;
+  agent_owner_id: number;
+  username: string;
+  last_seen_at: string | null;
+};
+
+export type UsageSummary = {
+  ok: boolean;
+  rows: number;
+  total_prompt_tokens: number;
+  total_completion_tokens: number;
+  total_cost_usd: number;
+  by_model: Record<string, {
+    events: number;
+    prompt_tokens: number;
+    completion_tokens: number;
+    cost_usd: number;
+  }>;
+};
+
+export type WorkflowProgram = {
+  name: string;
+  created_at: string | null;
+  updated_at: string | null;
+  preview: string;
+};
+
+export type AuditEvent = {
+  id: number;
+  actor_role: string;
+  actor_ref: string;
+  action: string;
+  target: string;
+  status: string;
+  created_at: string | null;
+  detail: Record<string, unknown>;
+};
+
+export type ChatMessage = {
+  role: string;
+  text: string;
+  ts: number;
 };

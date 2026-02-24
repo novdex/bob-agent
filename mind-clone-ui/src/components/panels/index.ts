@@ -1,3 +1,4 @@
+export { DashboardPanel } from "./DashboardPanel";
 export { RuntimePanel } from "./RuntimePanel";
 export { ChatPanel } from "./ChatPanel";
 export { TasksPanel } from "./TasksPanel";
@@ -5,3 +6,7 @@ export { ApprovalsPanel } from "./ApprovalsPanel";
 export { CronPanel } from "./CronPanel";
 export { BlackboxPanel } from "./BlackboxPanel";
 export { NodesPanel } from "./NodesPanel";
+export { GoalsPanel } from "./GoalsPanel";
+export { TeamPanel } from "./TeamPanel";
+export { UsagePanel } from "./UsagePanel";
+export { WorkflowsPanel } from "./WorkflowsPanel";
