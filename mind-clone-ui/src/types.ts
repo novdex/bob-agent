@@ -40,3 +40,23 @@ export type CronJob = {
   last_run_at?: string | null;
   last_error?: string | null;
 };
+
+export type PanelKey =
+  | "runtime"
+  | "chat"
+  | "tasks"
+  | "approvals"
+  | "cron"
+  | "blackbox"
+  | "nodes";
+
+export type PanelDef = {
+  key: PanelKey;
+  label: string;
+};
+
+export type AppContext = {
+  chatId: string;
+  username: string;
+  token: string;
+};
