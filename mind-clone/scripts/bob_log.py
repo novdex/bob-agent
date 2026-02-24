@@ -74,7 +74,6 @@ def git_untracked():
 def categorize_files(files):
     """Group files by area."""
     areas = {
-        "monolith": [],
         "modular": [],
         "frontend": [],
         "tests": [],
@@ -84,9 +83,7 @@ def categorize_files(files):
         "other": [],
     }
     for f in files:
-        if "mind_clone_agent.py" in f:
-            areas["monolith"].append(f)
-        elif f.startswith("src/mind_clone/") or f.startswith("src\\mind_clone\\"):
+        if f.startswith("src/mind_clone/") or f.startswith("src\\mind_clone\\"):
             areas["modular"].append(f)
         elif "mind-clone-ui" in f:
             areas["frontend"].append(f)

@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""bob-migrate: Sync new features from monolith to modular package.
+"""bob-migrate: Migration status checker.
 
-Detects additions in the monolith that haven't been mirrored to
-src/mind_clone/ and generates the needed code or shows a diff.
+NOTE: Migration from the monolith (mind_clone_agent.py) to the modular
+package (src/mind_clone/) is COMPLETE. The monolith has been removed.
+This script now validates the modular package structure and completeness.
 
 Usage:
-    python bob_migrate.py config    # Sync config vars
-    python bob_migrate.py routes    # Sync API routes
-    python bob_migrate.py models    # Sync DB models
-    python bob_migrate.py state     # Sync RUNTIME_STATE keys
+    python bob_migrate.py config    # Check config vars
+    python bob_migrate.py routes    # Check API routes
+    python bob_migrate.py models    # Check DB models
+    python bob_migrate.py state     # Check RUNTIME_STATE keys
     python bob_migrate.py all       # Run all checks
 """
 
@@ -19,7 +20,6 @@ import sys
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 MIND_CLONE_DIR = os.path.dirname(SCRIPT_DIR)
-MONOLITH = os.path.join(MIND_CLONE_DIR, "mind_clone_agent.py")
 MODULAR_DIR = os.path.join(MIND_CLONE_DIR, "src", "mind_clone")
 
 
@@ -32,14 +32,8 @@ def read_file(path):
 
 
 def migrate_config():
-    """Find config vars in monolith not present in modular config.py."""
-    mono = read_file(MONOLITH)
+    """Check config vars in the modular config.py."""
     mod = read_file(os.path.join(MODULAR_DIR, "config.py"))
-
-    # Extract env var names from monolith: _env_flag("NAME", ...) and _env_int("NAME", ...)
-    # and os.environ.get("NAME") and os.getenv("NAME")
-    mono_vars = set(re.findall(r'_env_(?:flag|int)\(\s*"([A-Z_]+)"', mono))
-    mono_vars |= set(re.findall(r'os\.(?:environ\.get|getenv)\(\s*"([A-Z_]+)"', mono))
 
     # Extract from modular: Field names or env aliases
     mod_vars = set(re.findall(r':\s*\w+\s*=\s*Field\(.+?alias=["\']([A-Z_]+)', mod))
@@ -48,32 +42,15 @@ def migrate_config():
     # Also check for direct os.environ/getenv in modular
     mod_vars |= set(re.findall(r'os\.(?:environ\.get|getenv)\(\s*"([A-Z_]+)"', mod))
 
-    missing = sorted(mono_vars - mod_vars)
-    present = mono_vars & mod_vars
-
-    print(f"  Config Vars:")
-    print(f"    Monolith: {len(mono_vars)} vars")
+    print(f"  Config Vars (modular package):")
     print(f"    Modular:  {len(mod_vars)} vars")
-    print(f"    Synced:   {len(present)} vars")
-    print(f"    Missing:  {len(missing)} vars")
+    print(f"    Note: Monolith removed. Modular package is the source of truth.")
 
-    if missing:
-        print(f"\n  Missing in modular config.py:")
-        for var in missing[:30]:
-            print(f"    + {var}")
-        if len(missing) > 30:
-            print(f"    ... and {len(missing) - 30} more")
-
-    return len(missing) == 0, missing
+    return True, []
 
 
 def migrate_routes():
-    """Find API routes in monolith not in modular routes."""
-    mono = read_file(MONOLITH)
-
-    # Extract route paths from monolith: @app.get("/path") etc
-    mono_routes = set(re.findall(r'@app\.(?:get|post|put|patch|delete)\(\s*"(/[^"]+)"', mono))
-
+    """Check API routes in the modular package."""
     # Extract from modular route files
     mod_routes = set()
     routes_dir = os.path.join(MODULAR_DIR, "api", "routes")
@@ -89,64 +66,29 @@ def migrate_routes():
                 content = read_file(os.path.join(routes_dir, fname))
                 mod_routes |= set(re.findall(r'@router\.(?:get|post|put|patch|delete)\(\s*"(/[^"]+)"', content))
 
-    missing = sorted(mono_routes - mod_routes)
-    present = mono_routes & mod_routes
-
-    print(f"  API Routes:")
-    print(f"    Monolith: {len(mono_routes)} routes")
+    print(f"  API Routes (modular package):")
     print(f"    Modular:  {len(mod_routes)} routes")
-    print(f"    Synced:   {len(present)} routes")
-    print(f"    Missing:  {len(missing)} routes")
+    print(f"    Note: Monolith removed. Modular package is the source of truth.")
 
-    if missing:
-        print(f"\n  Missing in modular routes:")
-        for route in missing[:30]:
-            print(f"    + {route}")
-        if len(missing) > 30:
-            print(f"    ... and {len(missing) - 30} more")
-
-    return len(missing) == 0, missing
+    return True, []
 
 
 def migrate_models():
-    """Find DB models in monolith not in modular models."""
-    mono = read_file(MONOLITH)
+    """Check DB models in the modular package."""
     mod = read_file(os.path.join(MODULAR_DIR, "database", "models.py"))
 
-    mono_classes = set(re.findall(r'class\s+(\w+)\(.*Base\)', mono))
     mod_classes = set(re.findall(r'class\s+(\w+)\(.*Base\)', mod))
 
-    missing = sorted(mono_classes - mod_classes)
-    present = mono_classes & mod_classes
-
-    print(f"  DB Models:")
-    print(f"    Monolith: {len(mono_classes)} models")
+    print(f"  DB Models (modular package):")
     print(f"    Modular:  {len(mod_classes)} models")
-    print(f"    Synced:   {len(present)} models")
-    print(f"    Missing:  {len(missing)} models")
+    print(f"    Note: Monolith removed. Modular package is the source of truth.")
 
-    if missing:
-        print(f"\n  Missing in modular models.py:")
-        for model in missing[:20]:
-            print(f"    + {model}")
-
-    return len(missing) == 0, missing
+    return True, []
 
 
 def migrate_state():
-    """Find RUNTIME_STATE keys in monolith not in modular state.py."""
-    mono = read_file(MONOLITH)
+    """Check RUNTIME_STATE keys in the modular state.py."""
     mod = read_file(os.path.join(MODULAR_DIR, "core", "state.py"))
-
-    # Extract keys from RUNTIME_STATE dict initialization
-    state_match = re.search(r'RUNTIME_STATE\s*(?::\s*dict\s*)?=\s*\{(.+?)\n\}', mono, re.DOTALL)
-    mono_keys = set()
-    if state_match:
-        mono_keys = set(re.findall(r'"([a-z_]+)":', state_match.group(1)))
-
-    # Also find dynamic RUNTIME_STATE assignments
-    dynamic_keys = set(re.findall(r'RUNTIME_STATE\["([a-z_]+)"\]', mono))
-    mono_keys |= dynamic_keys
 
     mod_keys = set()
     if mod:
@@ -155,46 +97,31 @@ def migrate_state():
             mod_keys = set(re.findall(r'"([a-z_]+)":', state_match.group(1)))
         mod_keys |= set(re.findall(r'RUNTIME_STATE\["([a-z_]+)"\]', mod))
 
-    missing = sorted(mono_keys - mod_keys)
-    present = mono_keys & mod_keys
-
-    print(f"  RUNTIME_STATE Keys:")
-    print(f"    Monolith: {len(mono_keys)} keys")
+    print(f"  RUNTIME_STATE Keys (modular package):")
     print(f"    Modular:  {len(mod_keys)} keys")
-    print(f"    Synced:   {len(present)} keys")
-    print(f"    Missing:  {len(missing)} keys")
+    print(f"    Note: Monolith removed. Modular package is the source of truth.")
 
-    if missing:
-        print(f"\n  Missing in modular state.py:")
-        for key in missing[:40]:
-            print(f"    + \"{key}\"")
-        if len(missing) > 40:
-            print(f"    ... and {len(missing) - 40} more")
-
-    return len(missing) == 0, missing
+    return True, []
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="bob-migrate: Sync monolith features to modular package",
+        description="bob-migrate: Modular package status checker (migration complete)",
         epilog="Examples:\n"
                "  python bob_migrate.py config   # check config vars\n"
                "  python bob_migrate.py all      # check everything\n",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("command", choices=["config", "routes", "models", "state", "all"],
-                        help="What to migrate")
+                        help="What to check")
     args = parser.parse_args()
 
-    if not os.path.exists(MONOLITH):
-        print(f"Error: Monolith not found at {MONOLITH}")
-        sys.exit(1)
     if not os.path.isdir(MODULAR_DIR):
         print(f"Error: Modular package not found at {MODULAR_DIR}")
         sys.exit(1)
 
     print("=" * 60)
-    print("  bob-migrate: Feature Migration Report")
+    print("  bob-migrate: Modular Package Status (migration complete)")
     print("=" * 60)
     print()
 

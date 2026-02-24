@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import importlib.util
 import json
 import sys
 import traceback
@@ -10,7 +9,9 @@ from pathlib import Path
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
-MODULE_PATH = ROOT_DIR / "mind_clone_agent.py"
+
+# Ensure the modular package is importable
+sys.path.insert(0, str(ROOT_DIR / "src"))
 
 
 class CheckError(RuntimeError):
@@ -18,10 +19,8 @@ class CheckError(RuntimeError):
 
 
 def _load_module():
-    spec = importlib.util.spec_from_file_location("mind_clone_agent_hardening", str(MODULE_PATH))
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
+    """Load the mind_clone modular package as a module namespace."""
+    import mind_clone as module
     return module
 
 

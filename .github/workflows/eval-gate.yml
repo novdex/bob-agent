@@ -27,7 +27,7 @@ jobs:
           pip install -r mind-clone/requirements.txt
 
       - name: Compile check
-        run: python -m py_compile mind-clone/mind_clone_agent.py
+        run: python -m compileall -q mind-clone/src/
 
       - name: Run release gate
         env:

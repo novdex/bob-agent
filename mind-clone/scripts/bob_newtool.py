@@ -141,48 +141,41 @@ def main():
     print("=" * 70)
 
     # 1. Implementation
-    print("\n[1/5] TOOL IMPLEMENTATION")
-    print("     Paste into Section 2 (tools, ~line 3563+) of mind_clone_agent.py")
+    print("\n[1/4] TOOL IMPLEMENTATION")
+    print("     Add to appropriate file in src/mind_clone/tools/")
     print("-" * 70)
-    print(generate_implementation(name, desc, params))
+    print(generate_modular_impl(name, desc, params))
 
     # 2. Schema
-    print("\n[2/5] TOOL SCHEMA (OpenAI Function Calling Format)")
-    print("     Paste into TOOL_DEFINITIONS list (~line 9034+)")
+    print("\n[2/4] TOOL SCHEMA (OpenAI Function Calling Format)")
+    print("     Paste into src/mind_clone/tools/schemas.py TOOL_DEFINITIONS list")
     print("-" * 70)
     print(generate_schema(name, desc, params))
     print(",")
 
     # 3. Dispatch
-    print("\n[3/5] TOOL DISPATCH ENTRY")
-    print("     Paste into TOOL_DISPATCH dict (~line 9778+)")
+    print("\n[3/4] TOOL DISPATCH ENTRY")
+    print("     Paste into src/mind_clone/tools/registry.py TOOL_DISPATCH dict")
     print("-" * 70)
     print(generate_dispatch(name, params))
 
     # 4. Tool sets
-    print("\n[4/5] TOOL SET UPDATES")
-    print("     Add to ALL_TOOL_NAMES (~line 838)", end="")
+    print("\n[4/4] TOOL SET UPDATES")
+    print("     Add to ALL_TOOL_NAMES in src/mind_clone/core/security.py", end="")
     if args.safe:
-        print(" and SAFE_TOOL_NAMES (~line 898)")
+        print(" and SAFE_TOOL_NAMES")
     else:
         print()
     print("-" * 70)
     print(generate_toolset_entry(name, args.safe))
 
-    # 5. Modular package
-    print("\n[5/5] MODULAR PACKAGE VERSION")
-    print("     For src/mind_clone/tools/ + schemas.py + registry.py")
-    print("-" * 70)
-    print(generate_modular_impl(name, desc, params))
-
     # Reminder
     print("=" * 70)
     print("  Checklist:")
-    print(f"  [ ] Implementation in Section 2")
-    print(f"  [ ] Schema in TOOL_DEFINITIONS")
-    print(f"  [ ] Dispatch in TOOL_DISPATCH")
-    print(f"  [ ] Added to ALL_TOOL_NAMES" + (" + SAFE_TOOL_NAMES" if args.safe else ""))
-    print(f"  [ ] Modular version in src/mind_clone/tools/")
+    print(f"  [ ] Implementation in src/mind_clone/tools/<category>.py")
+    print(f"  [ ] Schema in src/mind_clone/tools/schemas.py")
+    print(f"  [ ] Dispatch in src/mind_clone/tools/registry.py")
+    print(f"  [ ] Added to ALL_TOOL_NAMES" + (" + SAFE_TOOL_NAMES" if args.safe else "") + " in src/mind_clone/core/security.py")
     print(f"  [ ] New env vars in .env.example (if any)")
     print(f"  [ ] Run bob-check to validate")
     print("=" * 70)

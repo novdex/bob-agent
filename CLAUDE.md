@@ -11,8 +11,7 @@ This is an **AGI project**. Every feature must serve one of the 8 intelligence p
 ```
 ai-agent-platform/
 ├── mind-clone/                # Backend (the Bob agent)
-│   ├── mind_clone_agent.py    # Monolith — 24K lines, PRODUCTION
-│   ├── src/mind_clone/        # Modular package — migration target
+│   ├── src/mind_clone/        # Modular package (production)
 │   ├── scripts/               # bob-* developer tools
 │   ├── tests/                 # Unit + integration tests
 │   ├── persist/               # Runtime data (gitignored)
@@ -39,14 +38,11 @@ ai-agent-platform/
 └── .gitignore
 ```
 
-## Two Runtimes (Both Must Stay Functional)
+## Runtime
 
 | Runtime | Path | Status | Entry Point |
 |---------|------|--------|-------------|
-| **Monolith** | `mind-clone/mind_clone_agent.py` (~24K lines) | Production (live traffic) | `python mind_clone_agent.py` |
-| **Modular** | `mind-clone/src/mind_clone/` | Development/migration target | `python -m mind_clone --web` |
-
-Prefer changes to the modular package over the monolith.
+| **Modular** | `mind-clone/src/mind_clone/` | Production | `python -m mind_clone --web` |
 
 ## Commands
 
@@ -60,10 +56,9 @@ pytest -k test_health               # single test by name
 # Compile check
 python -m compileall -q mind-clone/src/
 
-# Start servers
+# Start server
 cd mind-clone
-python mind_clone_agent.py           # monolith (production, port 8000)
-python -m mind_clone --web           # modular (requires pip install -e . from root)
+python -m mind_clone --web           # production (requires pip install -e . from root)
 
 # Frontend
 cd mind-clone-ui
@@ -82,20 +77,6 @@ bob start | bob stop | bob restart | bob status | bob chat | bob say "msg"
 
 **Data flow:** User (Telegram/API) -> FastAPI (port 8000) -> Agent Loop -> Kimi K2.5 LLM -> Tool Execution -> Result fed back to LLM -> Response -> User
 
-**Monolith sections** (approximate line ranges in `mind-clone/mind_clone_agent.py`):
-- 1-933: Imports, env vars, constants, RUNTIME_STATE, policy packs
-- 934-1599: GloVe word vectors (semantic search engine)
-- 1600-2699: Database models (70+ SQLAlchemy tables)
-- 2700-8155: Tool implementations (38+ tools) + browser tools
-- 8156-9116: Tool registry (TOOL_DEFINITIONS + TOOL_DISPATCH)
-- 9117-12378: Pillar systems (memory, learning, autonomy, performance)
-- 12379-14160: Identity, authority, conversation memory
-- 14161-15100: Section 5B: Closed Loop Feedback Engine
-- 15101-15800: LLM client (failover chain, circuit breakers) + agent loop
-- 15801-17600: Task engine (planning, graph, branching, checkpoints)
-- 17601-20000: User management + Telegram adapter
-- 20001-23200: FastAPI application (routes, middleware, lifespan, entry point)
-
 **Modular package** (`mind-clone/src/mind_clone/`):
 - `config.py` — Pydantic Settings (80+ env vars)
 - `agent/` — identity, LLM client, reasoning loop, memory
@@ -105,7 +86,7 @@ bob start | bob stop | bob restart | bob status | bob chat | bob say "msg"
 - `tools/` — implementations, schemas, registry
 - `services/` — scheduler, task engine, telegram adapter
 
-**Key globals** (monolith, or `core/state.py` in modular):
+**Key globals** (`core/state.py`):
 - `RUNTIME_STATE` — mutable dict tracking all runtime state (60+ keys)
 - `TOOL_DISPATCH` — function registry mapping tool names to implementations
 - `SessionLocal` — SQLAlchemy session factory
@@ -162,8 +143,7 @@ Developer helper scripts. Claude Code should use these automatically:
 | Script | When to Use | Command |
 |--------|------------|---------|
 | **bob-check** | After ANY code change | `python mind-clone/scripts/bob_check.py` |
-| **bob-find** | When navigating the monolith | `python mind-clone/scripts/bob_find.py <section>` |
-| **bob-sync** | When changing something in both runtimes | `python mind-clone/scripts/bob_sync.py` |
+| **bob-find** | When navigating the codebase | `python mind-clone/scripts/bob_find.py <section>` |
 | **bob-newtool** | When adding a new tool | `python mind-clone/scripts/bob_newtool.py <name> <desc> --params ...` |
 | **bob-log** | At end of work session | `python mind-clone/scripts/bob_log.py --auto` |
 | **bob-health** | When checking if Bob is running | `python mind-clone/scripts/bob_health.py` |
@@ -172,7 +152,6 @@ Developer helper scripts. Claude Code should use these automatically:
 | **bob-test-live** | When testing Bob live end-to-end | `python mind-clone/scripts/bob_test_live.py` |
 | **bob-memory** | When inspecting memory systems | `python mind-clone/scripts/bob_memory.py stats` |
 | **bob-api** | When testing API endpoints | `python mind-clone/scripts/bob_api.py` |
-| **bob-migrate** | When syncing monolith to modular | `python mind-clone/scripts/bob_migrate.py all` |
 | **bob-bench** | When measuring performance | `python mind-clone/scripts/bob_bench.py latency` |
 | **bob-telegram** | When debugging Telegram integration | `python mind-clone/scripts/bob_telegram.py status` |
 | **bob-tasks** | When inspecting task engine | `python mind-clone/scripts/bob_tasks.py list` |
@@ -188,15 +167,14 @@ Developer helper scripts. Claude Code should use these automatically:
 1. Read `docs/AGENTS.md` before making changes
 2. Log all changes in `mind-clone/CHANGELOG.md` when done
 3. **DO NOT** modify `.env` (contains secrets)
-4. **DO NOT** delete `mind_clone_agent.py` (still production)
-5. **DO NOT** add pip packages without updating both `mind-clone/requirements.txt` and root `pyproject.toml`
-6. All tests must pass after changes (`pytest`)
-7. General solutions over specific hacks
+4. **DO NOT** add pip packages without updating both `mind-clone/requirements.txt` and root `pyproject.toml`
+5. All tests must pass after changes (`pytest`)
+6. General solutions over specific hacks
 
 ## Known Gotchas
 
 - **Python 3.14 on Windows:** `onnxruntime`, `torch`, `fastembed` all fail with DLL errors. GloVe+numpy is the solution.
-- **Proxy env vars** break DuckDuckGo searches — monolith uses `without_proxy_env()` context manager.
+- **Proxy env vars** break DuckDuckGo searches — uses `without_proxy_env()` context manager.
 - **Port 8000 conflicts:** Kill existing python.exe before starting server.
 - **Circuit breaker cascades:** Failed tasks can trip the circuit breaker and block chat. Check `/status/runtime`.
 - **Task graph branching:** Max depth is 3 (`_b` suffix count in step_id).

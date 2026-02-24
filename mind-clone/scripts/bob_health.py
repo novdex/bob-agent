@@ -66,7 +66,7 @@ def print_dashboard(base_url):
         print(f"  Error:    {hb_err}")
         print()
         print("  Bob is not running.")
-        print("  Start with: cd mind-clone && python mind_clone_agent.py")
+        print("  Start with: cd mind-clone && python -m mind_clone --web")
         print("=" * 55)
         return False
 

@@ -1,5 +1,10 @@
 """
 Core infrastructure modules.
+
+Note: closed_loop and self_tune are NOT imported here to avoid circular
+imports (config.py -> core.policies -> core.__init__ -> closed_loop -> config).
+Import them directly: ``from mind_clone.core.closed_loop import ...``
+                       ``from mind_clone.core.self_tune import ...``
 """
 
 from .state import (

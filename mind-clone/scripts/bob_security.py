@@ -2,7 +2,7 @@
 """bob-security: Security audit scanner for Bob.
 
 Checks 8 security layers without needing Bob to be running.
-Uses dynamic import of the monolith to inspect configuration.
+Scans the modular package source at src/mind_clone/.
 
 Usage:
     python bob_security.py                # Run all 8 checks
@@ -17,13 +17,22 @@ import sys
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 MIND_CLONE_DIR = os.path.dirname(SCRIPT_DIR)
-MONOLITH = os.path.join(MIND_CLONE_DIR, "mind_clone_agent.py")
+MODULAR_DIR = os.path.join(MIND_CLONE_DIR, "src", "mind_clone")
 
 
-def read_monolith():
-    """Read monolith source as text."""
-    with open(MONOLITH, "r", encoding="utf-8", errors="replace") as f:
-        return f.read()
+def read_modular_source():
+    """Read all Python source files from the modular package as concatenated text."""
+    parts = []
+    for root, _dirs, files in os.walk(MODULAR_DIR):
+        for fname in sorted(files):
+            if fname.endswith(".py"):
+                fpath = os.path.join(root, fname)
+                try:
+                    with open(fpath, "r", encoding="utf-8", errors="replace") as f:
+                        parts.append(f.read())
+                except Exception:
+                    continue
+    return "\n".join(parts)
 
 
 def check_ssrf(src):
@@ -207,11 +216,11 @@ def main():
     parser.add_argument("--check", choices=list(ALL_CHECKS.keys()), help="Run single check")
     args = parser.parse_args()
 
-    if not os.path.exists(MONOLITH):
-        print(f"Error: Monolith not found at {MONOLITH}")
+    if not os.path.isdir(MODULAR_DIR):
+        print(f"Error: Modular package not found at {MODULAR_DIR}")
         sys.exit(1)
 
-    src = read_monolith()
+    src = read_modular_source()
 
     print("=" * 60)
     print("  bob-security: Security Audit")

@@ -219,15 +219,29 @@ def cmd_migrations(conn, args, db_path):
         print("  No migrations applied yet.")
         print()
 
-    # Try to find pending migrations from monolith source
-    monolith = os.path.join(MIND_CLONE_DIR, "mind_clone_agent.py")
-    if os.path.exists(monolith):
+    # Try to find pending migrations from modular package source
+    modular_dir = os.path.join(MIND_CLONE_DIR, "src", "mind_clone")
+    migration_source = None
+    # Search for SCHEMA_MIGRATION_STEPS in modular package
+    for candidate in [
+        os.path.join(modular_dir, "database", "models.py"),
+        os.path.join(modular_dir, "database", "__init__.py"),
+        os.path.join(modular_dir, "database", "migrations.py"),
+    ]:
+        if os.path.exists(candidate):
+            try:
+                with open(candidate, "r", encoding="utf-8", errors="replace") as f:
+                    content = f.read()
+                if "SCHEMA_MIGRATION_STEPS" in content:
+                    migration_source = content
+                    break
+            except Exception:
+                continue
+    if migration_source:
         try:
-            with open(monolith, "r", encoding="utf-8", errors="replace") as f:
-                content = f.read()
             # Find SCHEMA_MIGRATION_STEPS entries
             pattern = r'\(\s*(\d+)\s*,\s*"([^"]+)"'
-            found = re.findall(pattern, content[content.find("SCHEMA_MIGRATION_STEPS"):content.find("SCHEMA_MIGRATION_STEPS") + 5000] if "SCHEMA_MIGRATION_STEPS" in content else "")
+            found = re.findall(pattern, migration_source[migration_source.find("SCHEMA_MIGRATION_STEPS"):migration_source.find("SCHEMA_MIGRATION_STEPS") + 5000])
             applied_versions = {r[0] for r in rows}
             pending = [(v, n) for v, n in found if int(v) not in {int(av) for av in applied_versions}]
             if pending:

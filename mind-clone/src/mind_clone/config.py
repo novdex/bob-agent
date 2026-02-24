@@ -588,3 +588,31 @@ TASK_CHECKPOINT_MAX_PER_TASK = 10
 USAGE_LEDGER_ENABLED = True
 CANARY_PROFILE_NAME = "default"
 CANARY_TRAFFIC_PERCENT = 10
+
+# =========================================================================
+# Closed Loop Feedback Engine (Section 5B)
+# =========================================================================
+CLOSED_LOOP_ENABLED = _env_flag("CLOSED_LOOP_ENABLED", True)
+CLOSED_LOOP_TOOL_WARN_THRESHOLD = max(5, min(80, int(os.getenv("CLOSED_LOOP_TOOL_WARN_THRESHOLD", "40"))))
+CLOSED_LOOP_TOOL_BLOCK_THRESHOLD = max(1, min(50, int(os.getenv("CLOSED_LOOP_TOOL_BLOCK_THRESHOLD", "15"))))
+CLOSED_LOOP_TOOL_MIN_CALLS = max(2, min(50, int(os.getenv("CLOSED_LOOP_TOOL_MIN_CALLS", "5"))))
+CLOSED_LOOP_NOTE_MAX_RETRIEVALS = max(2, min(20, int(os.getenv("CLOSED_LOOP_NOTE_MAX_RETRIEVALS", "5"))))
+CLOSED_LOOP_DEAD_LETTER_BLOCK_COUNT = max(2, min(10, int(os.getenv("CLOSED_LOOP_DEAD_LETTER_BLOCK_COUNT", "3"))))
+CLOSED_LOOP_FORECAST_LOW_CONFIDENCE = max(5, min(60, int(os.getenv("CLOSED_LOOP_FORECAST_LOW_CONFIDENCE", "30"))))
+CLOSED_LOOP_LESSON_MATCH_THRESHOLD = max(0.05, min(0.80, float(os.getenv("CLOSED_LOOP_LESSON_MATCH_THRESHOLD", "0.25"))))
+
+# =========================================================================
+# Self-Tuning Performance Engine (Section 5C)
+# =========================================================================
+SELF_TUNE_ENABLED = _env_flag("SELF_TUNE_ENABLED", True)
+SELF_TUNE_INTERVAL_TICKS = max(1, int(os.getenv("SELF_TUNE_INTERVAL_TICKS", "2")))
+SELF_TUNE_QUEUE_BACKLOG_THRESHOLD = max(1, int(os.getenv("SELF_TUNE_QUEUE_BACKLOG_THRESHOLD", "3")))
+SELF_TUNE_HARD_CLEAR_RATE_THRESHOLD = max(1, int(os.getenv("SELF_TUNE_HARD_CLEAR_RATE_THRESHOLD", "5")))
+SELF_TUNE_SESSION_BUDGET_STEP = max(2000, int(os.getenv("SELF_TUNE_SESSION_BUDGET_STEP", "8000")))
+SELF_TUNE_SESSION_BUDGET_MAX = max(40000, int(os.getenv("SELF_TUNE_SESSION_BUDGET_MAX", "80000")))
+SELF_TUNE_SESSION_BUDGET_MIN = max(6000, int(os.getenv("SELF_TUNE_SESSION_BUDGET_MIN", "20000")))
+SELF_TUNE_WORKER_MAX = max(2, min(16, int(os.getenv("SELF_TUNE_WORKER_MAX", "6"))))
+
+# Session budget vars mutated by self-tune engine at runtime
+SESSION_SOFT_TRIM_CHAR_BUDGET = settings.session_soft_trim_char_budget
+SESSION_HARD_CLEAR_CHAR_BUDGET = SESSION_SOFT_TRIM_CHAR_BUDGET + 8000

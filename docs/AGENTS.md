@@ -43,7 +43,7 @@ This is a **multi-component AI Agent Platform** centered around the "Mind Clone 
 
 ### 1. mind-clone/ — The Agent Core
 
-**Primary file:** `mind_clone_agent.py` (single-file architecture)
+**Primary package:** `src/mind_clone/` (modular package architecture)
 
 A sovereign AI agent with the following capabilities:
 
@@ -81,19 +81,14 @@ Task Management:     schedule_job, list_scheduled_jobs, disable_scheduled_job
 Remote Execution:    list_execution_nodes, run_command_node
 ```
 
-**Key Sections in mind_clone_agent.py:**
-- SECTION 1: Database Models (User, IdentityKernel, ConversationMessage, Task, Goal, etc.)
-- SECTION 2: Tool Implementations (all tool functions)
-- SECTION 3: Tool Registry (TOOL_DEFINITIONS + TOOL_DISPATCH)
-- SECTION 4: Identity Loader
-- SECTION 5: Authority Bounds Checker
-- SECTION 6: Conversation Memory
-- SECTION 7: LLM Client (Kimi K2.5 API with failover)
-- SECTION 8: Agent Loop (the main reasoning loop)
-- SECTION 9: User/Identity Management
-- SECTION 10: Telegram Adapter
-- SECTION 11: FastAPI Application
-- SECTION 12: Entry Point
+**Key modules in `src/mind_clone/`:**
+- `config.py` — Pydantic Settings (80+ env vars)
+- `agent/` — identity, LLM client, reasoning loop, memory
+- `api/` — FastAPI factory + route modules
+- `core/` — state, security, budget, circuit breaker, queue, sandbox, plugins
+- `database/` — 40+ SQLAlchemy models + session factory
+- `tools/` — implementations, schemas, registry (TOOL_DISPATCH)
+- `services/` — scheduler, task engine, telegram adapter
 
 ### 2. mind-clone-ui/ — Ops Console UI
 
@@ -158,7 +153,7 @@ python multi_model_orchestrator.py --list-models
 C:\Users\mader\OneDrive\Desktop\ai-agent-platform\
 │
 ├── mind-clone/                    # Main agent implementation
-│   ├── mind_clone_agent.py        # ← ALL agent code (single file)
+│   ├── src/mind_clone/            # Modular package (production)
 │   ├── requirements.txt           # Python dependencies
 │   ├── .env                       # Secrets (DO NOT TOUCH)
 │   ├── .env.example               # Template for env vars
@@ -219,7 +214,8 @@ copy .env.example .env
 
 # Run
 cd mind-clone
-python mind_clone_agent.py
+pip install -e .
+python -m mind_clone --web
 # Server starts at http://localhost:8000
 
 # Expose with ngrok (for Telegram webhooks)
@@ -290,10 +286,10 @@ EVAL_HARNESS_ENABLED=true
 
 ## Code Style Guidelines
 
-### Python (mind_clone_agent.py)
+### Python (src/mind_clone/)
 
-1. **Single-file architecture** — Keep all code in `mind_clone_agent.py`
-2. **Section organization** — Follow the existing section comments
+1. **Modular package architecture** — Code is organized in `src/mind_clone/` modules
+2. **Module organization** — Follow the existing package structure
 3. **Type hints** — Use for function signatures where practical
 4. **Error handling** — Use try/except with specific exceptions
 5. **Logging** — Use `log = logging.getLogger("mind_clone")`
@@ -314,7 +310,7 @@ EVAL_HARNESS_ENABLED=true
 
 The GitHub Actions workflow (`.github/workflows/eval-gate.yml`) runs:
 
-1. Python compilation check: `python -m py_compile mind_clone_agent.py`
+1. Python compilation check: `python -m compileall -q src/`
 2. Release gate evaluation: `python scripts/release_gate_check.py`
 
 ### Local Validation
@@ -322,7 +318,7 @@ The GitHub Actions workflow (`.github/workflows/eval-gate.yml`) runs:
 ```bash
 # Compile check
 cd mind-clone
-python -m py_compile mind_clone_agent.py
+python -m compileall -q src/
 
 # Run release gate
 python scripts/release_gate_check.py
@@ -355,17 +351,17 @@ The agent has a built-in continuous evaluation system:
 3. **Read CHANGELOG.md** — See what previous workers did
 4. **Log your changes** — Update CHANGELOG.md when done
 5. **DO NOT modify `.env`** — Contains secrets
-6. **DO NOT split files** — Keep agent code in single file unless told otherwise
+6. **Follow package structure** — Keep agent code organized in `src/mind_clone/` modules
 7. **Test before committing** — Run compile checks
 8. **Document reasoning** — Explain WHY, not just WHAT
 
 ## Adding New Features
 
-### Adding a New Tool to mind_clone_agent.py
+### Adding a New Tool
 
-1. **Implement** the function in SECTION 2 (Tool Implementations)
-2. **Add schema** in SECTION 3 (TOOL_DEFINITIONS list)
-3. **Add dispatch** in SECTION 3 (TOOL_DISPATCH dict)
+1. **Implement** the function in `src/mind_clone/tools/` (add a new module or extend existing one)
+2. **Add schema** to the tool definitions in `src/mind_clone/tools/schemas.py`
+3. **Add dispatch** entry in `src/mind_clone/tools/registry.py` (TOOL_DISPATCH dict)
 4. **Update tool sets** — Add to ALL_TOOL_NAMES, SAFE_TOOL_NAMES if applicable
 5. **Update .env.example** — Document any new env vars
 6. **Test** — Verify the tool works via Telegram or API

@@ -104,15 +104,19 @@ def extract_tool_names_from_source():
         except Exception:
             pass
 
-    # Try monolith TOOL_DISPATCH
+    # If no tools found from modular registry, scan all tool files
     if not tools:
-        monolith_path = os.path.join(MIND_CLONE_DIR, "mind_clone_agent.py")
-        if os.path.exists(monolith_path):
-            try:
-                with open(monolith_path, "r", encoding="utf-8", errors="replace") as f:
-                    _extract_dispatch_block(f.read())
-            except Exception:
-                pass
+        tools_dir = os.path.join(MIND_CLONE_DIR, "src", "mind_clone", "tools")
+        if os.path.isdir(tools_dir):
+            for fname in os.listdir(tools_dir):
+                if fname.endswith(".py") and fname != "__init__.py":
+                    try:
+                        with open(os.path.join(tools_dir, fname), "r", encoding="utf-8", errors="replace") as f:
+                            content = f.read()
+                        for match in re.finditer(r'def tool_([a-z_]+)\(', content):
+                            tools.add(match.group(1))
+                    except Exception:
+                        pass
 
     return sorted(tools)
 
@@ -158,7 +162,7 @@ def cmd_list(args):
     if not tools:
         print("  Could not extract tools from source code.")
         print("  Checked: src/mind_clone/tools/registry.py")
-        print("           mind_clone_agent.py")
+        print("           src/mind_clone/tools/*.py")
         return
 
     for tool in tools:

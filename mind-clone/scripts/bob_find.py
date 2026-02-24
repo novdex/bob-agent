@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""bob-find: Navigate the monolith by section name.
+"""bob-find: Navigate the modular package by section/module name.
 
 Usage:
-    python bob_find.py                  # List all sections
-    python bob_find.py registry         # Show first 50 lines of registry section
+    python bob_find.py                  # List all modules
+    python bob_find.py registry         # Show first 50 lines of registry module
     python bob_find.py reg              # Fuzzy match: "reg" -> "registry"
     python bob_find.py llm --lines 100  # Show first 100 lines
-    python bob_find.py tools --full     # Show entire section
+    python bob_find.py tools --full     # Show entire module
 """
 
 import argparse
@@ -20,158 +20,161 @@ if sys.platform == "win32":
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 MIND_CLONE_DIR = os.path.dirname(SCRIPT_DIR)
-MONOLITH = os.path.join(MIND_CLONE_DIR, "mind_clone_agent.py")
+MODULAR_DIR = os.path.join(MIND_CLONE_DIR, "src", "mind_clone")
 
 DEFAULT_LINES = 50
 
-
-def parse_sections(filepath):
-    """Parse section markers from the monolith and return ordered list of (name, start, end)."""
-    sections = []
-    current_name = None
-    current_start = None
-
-    with open(filepath, "r", encoding="utf-8", errors="replace") as f:
-        lines = f.readlines()
-
-    total_lines = len(lines)
-
-    for i, line in enumerate(lines, start=1):
-        stripped = line.strip()
-        # Match "# ===" section headers
-        if stripped.startswith("# ==") and len(stripped) > 10:
-            # Look at the next non-empty, non-separator line for the section title
-            title = None
-            for j in range(i, min(i + 5, total_lines)):
-                next_line = lines[j].strip()
-                if next_line and not next_line.startswith("# =="):
-                    # Extract title from comment
-                    if next_line.startswith("#"):
-                        title = next_line.lstrip("# ").strip()
-                    break
-
-            if title:
-                # Close previous section
-                if current_name is not None:
-                    sections.append((current_name, current_start, i - 1))
-                current_name = title
-                current_start = i
-
-    # Close last section
-    if current_name is not None:
-        sections.append((current_name, current_start, total_lines))
-
-    return sections, total_lines
+# Map short keys to module paths (relative to src/mind_clone/)
+MODULE_MAP = {
+    "config":    ("config.py",                   "Configuration & env vars"),
+    "models":    ("database/models.py",          "Database models (SQLAlchemy)"),
+    "tools":     ("tools/",                      "Tool implementations"),
+    "registry":  ("tools/registry.py",           "Tool registry (TOOL_DISPATCH)"),
+    "schemas":   ("tools/schemas.py",            "Tool schemas (TOOL_DEFINITIONS)"),
+    "files":     ("tools/files.py",              "File tools"),
+    "web":       ("tools/web.py",                "Web tools"),
+    "code":      ("tools/code.py",               "Code tools"),
+    "email":     ("tools/email.py",              "Email tools"),
+    "desktop":   ("tools/desktop.py",            "Desktop tools"),
+    "glove":     ("tools/vector_memory.py",      "GloVe vector memory / semantic search"),
+    "identity":  ("agent/identity.py",           "Identity loader"),
+    "llm":       ("agent/llm.py",                "LLM client (failover chain)"),
+    "loop":      ("agent/loop.py",               "Agent reasoning loop"),
+    "memory":    ("agent/memory.py",             "Conversation memory"),
+    "reflection":("agent/reflection.py",         "In-loop reflection"),
+    "state":     ("core/state.py",               "RUNTIME_STATE + globals"),
+    "security":  ("core/security.py",            "Security, policies, approval gate"),
+    "budget":    ("core/budget.py",              "Budget governor"),
+    "queue":     ("core/queue.py",               "Command queue"),
+    "sandbox":   ("core/sandbox.py",             "Execution sandbox"),
+    "plugins":   ("core/plugins.py",             "Plugin system"),
+    "breaker":   ("core/circuit_breaker.py",     "Circuit breaker"),
+    "factory":   ("api/factory.py",              "FastAPI app factory"),
+    "routes":    ("api/routes.py",               "API routes (main)"),
+    "chat":      ("api/routes/chat.py",          "Chat API routes"),
+    "runtime":   ("api/routes/runtime.py",       "Runtime/status API routes"),
+    "tasks":     ("services/task_engine.py",     "Task engine"),
+    "scheduler": ("services/scheduler.py",       "Scheduler / cron"),
+    "telegram":  ("services/telegram.py",        "Telegram adapter"),
+    "entry":     ("__main__.py",                 "Entry point"),
+}
 
 
-def make_short_key(title):
-    """Create a short lookup key from a section title."""
-    title_lower = title.lower()
-    # Map known section titles to short keys
-    key_map = {
-        "config": ["configuration", "config", "env var"],
-        "glove": ["glove", "vector memory", "embedding"],
-        "models": ["section 1:", "database model"],
-        "helpers": ["section 1b:", "session integrity", "ssrf", "queue mode"],
-        "tools": ["section 2:", "tool implementation"],
-        "browser": ["pillar 5:", "browser tool"],
-        "registry": ["section 3:", "tool registry"],
-        "identity": ["section 4:", "identity loader"],
-        "pillar1": ["pillar 1:", "in-loop reflection"],
-        "pillar4": ["pillar 4:", "task lesson"],
-        "authority": ["section 5:", "autonomy directive"],
-        "memory": ["section 6:", "conversation memory"],
-        "llm": ["section 7:", "llm client"],
-        "loop": ["section 8:", "agent loop", "the brain"],
-        "tasks": ["section 8b:", "autonomous task", "task engine"],
-        "users": ["section 9:", "user", "identity management"],
-        "telegram": ["section 10:", "telegram"],
-        "fastapi": ["section 11:", "fastapi application"],
-        "entry": ["entry point", "__main__"],
-    }
-    for key, patterns in key_map.items():
-        if any(p in title_lower for p in patterns):
-            return key
-    # Fallback: first word
-    words = re.findall(r"[a-z]+", title_lower)
-    return words[0] if words else "unknown"
+def discover_modules():
+    """Discover all .py files in the modular package and return (key, relpath, title, line_count) list."""
+    modules = []
+    # First add known modules from MODULE_MAP
+    for key, (relpath, title) in MODULE_MAP.items():
+        full = os.path.join(MODULAR_DIR, relpath.replace("/", os.sep))
+        if os.path.isfile(full):
+            with open(full, "r", encoding="utf-8", errors="replace") as f:
+                line_count = sum(1 for _ in f)
+            modules.append((key, relpath, title, line_count))
+        elif os.path.isdir(full):
+            # For directory entries, count all .py files
+            total = 0
+            for root, _dirs, fnames in os.walk(full):
+                for fn in fnames:
+                    if fn.endswith(".py"):
+                        fp = os.path.join(root, fn)
+                        with open(fp, "r", encoding="utf-8", errors="replace") as f:
+                            total += sum(1 for _ in f)
+            modules.append((key, relpath, title, total))
+    return modules
 
 
-def fuzzy_match(query, sections_with_keys):
-    """Find sections matching a fuzzy query."""
+def fuzzy_match(query, modules):
+    """Find modules matching a fuzzy query."""
     query_lower = query.lower()
     matches = []
-    for key, title, start, end in sections_with_keys:
+    for key, relpath, title, lines in modules:
         if query_lower == key:
-            matches.append((key, title, start, end))
-        elif query_lower in key or query_lower in title.lower():
-            matches.append((key, title, start, end))
+            matches.append((key, relpath, title, lines))
+        elif query_lower in key or query_lower in title.lower() or query_lower in relpath.lower():
+            matches.append((key, relpath, title, lines))
     return matches
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Navigate the Bob monolith by section")
-    parser.add_argument("section", nargs="?", help="Section name or fuzzy query")
+    parser = argparse.ArgumentParser(description="Navigate the Bob modular package by module")
+    parser.add_argument("section", nargs="?", help="Module name or fuzzy query")
     parser.add_argument("--lines", "-n", type=int, default=DEFAULT_LINES, help="Lines to show (default 50)")
-    parser.add_argument("--full", "-f", action="store_true", help="Show entire section")
+    parser.add_argument("--full", "-f", action="store_true", help="Show entire module")
     args = parser.parse_args()
 
-    if not os.path.exists(MONOLITH):
-        print(f"Error: Monolith not found at {MONOLITH}")
+    if not os.path.isdir(MODULAR_DIR):
+        print(f"Error: Modular package not found at {MODULAR_DIR}")
         sys.exit(1)
 
-    sections, total_lines = parse_sections(MONOLITH)
-    sections_with_keys = [
-        (make_short_key(title), title, start, end)
-        for title, start, end in sections
-    ]
+    modules = discover_modules()
 
     # List mode
     if not args.section:
-        print(f"Bob Monolith: {total_lines:,} lines, {len(sections)} sections")
+        total_lines = sum(lc for _, _, _, lc in modules)
+        print(f"Bob Modular Package: {total_lines:,} lines, {len(modules)} modules")
+        print(f"  Path: {MODULAR_DIR}")
         print("=" * 70)
-        print(f"  {'Key':<12} {'Lines':>12}  {'Size':>6}  Title")
+        print(f"  {'Key':<12} {'Lines':>6}  {'Path':<30s}  Description")
         print("-" * 70)
-        for key, title, start, end in sections_with_keys:
-            size = end - start + 1
-            print(f"  {key:<12} {start:>5}-{end:<5}  {size:>5}  {title}")
+        for key, relpath, title, lc in modules:
+            print(f"  {key:<12} {lc:>6}  {relpath:<30s}  {title}")
         print()
         print("Usage: python bob_find.py <key>  (e.g., 'registry', 'llm', 'tools')")
         sys.exit(0)
 
     # Find mode
-    matches = fuzzy_match(args.section, sections_with_keys)
+    matches = fuzzy_match(args.section, modules)
     if not matches:
-        print(f"No section matching '{args.section}'")
-        print("Available keys:", ", ".join(k for k, _, _, _ in sections_with_keys))
+        print(f"No module matching '{args.section}'")
+        print("Available keys:", ", ".join(k for k, _, _, _ in modules))
         sys.exit(1)
 
     if len(matches) > 1 and not any(m[0] == args.section.lower() for m in matches):
         print(f"Multiple matches for '{args.section}':")
-        for key, title, start, end in matches:
-            print(f"  {key}: {title} (lines {start}-{end})")
+        for key, relpath, title, lc in matches:
+            print(f"  {key}: {relpath} ({lc} lines) - {title}")
         sys.exit(1)
 
-    key, title, start, end = matches[0]
-    section_size = end - start + 1
-    show_lines = section_size if args.full else min(args.lines, section_size)
+    key, relpath, title, total_lines = matches[0]
+    filepath = os.path.join(MODULAR_DIR, relpath.replace("/", os.sep))
 
-    print(f"Section: {title}")
-    print(f"Key: {key} | Lines {start}-{end} ({section_size} lines)")
-    if not args.full and show_lines < section_size:
+    # If it's a directory, list files in it
+    if os.path.isdir(filepath):
+        print(f"Module: {title}")
+        print(f"Key: {key} | Path: {relpath} ({total_lines} lines total)")
+        print("=" * 70)
+        for root, _dirs, fnames in os.walk(filepath):
+            for fn in sorted(fnames):
+                if fn.endswith(".py"):
+                    fp = os.path.join(root, fn)
+                    rel = os.path.relpath(fp, MODULAR_DIR).replace(os.sep, "/")
+                    with open(fp, "r", encoding="utf-8", errors="replace") as f:
+                        lc = sum(1 for _ in f)
+                    print(f"  {rel:<40s}  {lc:>5} lines")
+        print()
+        print("  Use bob_find.py <specific_key> to view a specific file.")
+        sys.exit(0)
+
+    # Show file content
+    with open(filepath, "r", encoding="utf-8", errors="replace") as f:
+        lines = f.readlines()
+
+    file_lines = len(lines)
+    show_lines = file_lines if args.full else min(args.lines, file_lines)
+
+    print(f"Module: {title}")
+    print(f"Key: {key} | Path: {relpath} ({file_lines} lines)")
+    if not args.full and show_lines < file_lines:
         print(f"Showing first {show_lines} lines (use --full for all)")
     print("=" * 70)
 
-    with open(MONOLITH, "r", encoding="utf-8", errors="replace") as f:
-        lines = f.readlines()
-
-    for i in range(start - 1, min(start - 1 + show_lines, end)):
+    for i in range(show_lines):
         line_num = i + 1
         print(f"{line_num:>6}  {lines[i]}", end="")
 
-    if not args.full and show_lines < section_size:
-        remaining = section_size - show_lines
-        print(f"\n  ... {remaining} more lines (use --full or --lines {section_size})")
+    if not args.full and show_lines < file_lines:
+        remaining = file_lines - show_lines
+        print(f"\n  ... {remaining} more lines (use --full or --lines {file_lines})")
 
 
 if __name__ == "__main__":

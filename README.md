@@ -31,8 +31,7 @@ ai-agent-platform/
 │   ├── VISION.md              # AGI manifesto & 8 pillars
 │   └── archive/               # Historical documentation
 ├── mind-clone/
-│   ├── mind_clone_agent.py    # Production monolith (~25K lines)
-│   ├── src/mind_clone/        # Modular package (migration target)
+│   ├── src/mind_clone/        # Modular package (production)
 │   ├── scripts/               # 21+ bob-* developer tools
 │   ├── tests/                 # Unit + integration tests
 │   ├── persist/               # Runtime data (gitignored)
@@ -64,15 +63,11 @@ pip install -r requirements.txt
 cp .env.example .env
 # Edit .env with your API keys (KIMI_API_KEY required)
 
-# Start the agent (production monolith)
-python mind_clone_agent.py
-# Server: http://localhost:8000
-# UI: http://localhost:8000/ui
-
-# Or use the modular package
-cd ..
+# Start the agent
 pip install -e .
 python -m mind_clone --web
+# Server: http://localhost:8000
+# UI: http://localhost:8000/ui
 ```
 
 ### Frontend Development
@@ -121,7 +116,7 @@ python scripts/bob_check.py         # Full compile + test + lint check
 | Script | Purpose |
 |--------|---------|
 | `bob_check.py` | Run after ANY code change (compile + test + lint) |
-| `bob_find.py` | Navigate monolith sections |
+| `bob_find.py` | Navigate codebase sections |
 | `bob_health.py` | Check if Bob is running |
 | `bob_diag.py` | Diagnose performance issues |
 | `bob_memory.py` | Inspect memory systems |

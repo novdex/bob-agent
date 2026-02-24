@@ -6,14 +6,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is an **AGI project** (see `../docs/VISION.md`). Every feature must serve one of the 8 intelligence pillars: Reasoning, Memory, Autonomy, Learning, Tool Mastery, Self-Awareness, World Understanding, Communication. Read `../docs/VISION.md` before making changes.
 
-## Two Runtimes
+## Runtime
 
 | Runtime | Path | Status | Entry Point |
 |---------|------|--------|-------------|
-| **Monolith** | `mind_clone_agent.py` | Production (live traffic) | `python mind_clone_agent.py` |
-| **Modular** | `src/mind_clone/` | Development/tests | `python -m mind_clone --web` |
-
-The monolith (~23,000 lines) is the active production system. The modular package is the migration target. Both must remain functional.
+| **Modular** | `src/mind_clone/` | Production | `python -m mind_clone --web` |
 
 ## Commands
 
@@ -32,9 +29,8 @@ python -m compileall -q src/
 ruff check src/
 mypy src/mind_clone/
 
-# Start servers
-python mind_clone_agent.py           # monolith (production)
-python -m mind_clone --web           # modular package (requires pip install -e .)
+# Start server
+python -m mind_clone --web           # production (requires pip install -e .)
 python -m mind_clone --telegram-poll # telegram polling mode
 
 # Bob helper (PowerShell only, defined in user's PS profile)
@@ -45,19 +41,6 @@ bob start | bob stop | bob restart | bob status | bob chat | bob say "msg"
 
 **Data flow:** User (Telegram/API) -> FastAPI -> Agent Loop -> Kimi K2.5 LLM -> Tool Execution -> Result fed back to LLM -> Response -> User
 
-**Monolith sections** (approximate line ranges in `mind_clone_agent.py`):
-- 1-933: Imports, env vars, constants, RUNTIME_STATE, policy packs
-- 934-1599: GloVe word vectors (semantic search engine)
-- 1600-2699: Database models (70+ SQLAlchemy tables)
-- 2700-8155: Tool implementations (38+ tools) + browser tools
-- 8156-9116: Tool registry (TOOL_DEFINITIONS + TOOL_DISPATCH)
-- 9117-12378: Pillar systems (memory, learning, autonomy, performance)
-- 12379-14160: Identity, authority, conversation memory
-- 14161-15597: LLM client (failover chain, circuit breakers) + agent loop
-- 15598-17359: Task engine (planning, graph, branching, checkpoints)
-- 17360-19772: User management + Telegram adapter
-- 19773-22967: FastAPI application (routes, middleware, lifespan, entry point)
-
 **Modular package** (`src/mind_clone/`):
 - `config.py` — Pydantic Settings (80+ env vars)
 - `agent/` — identity, LLM client, reasoning loop, memory
@@ -67,7 +50,7 @@ bob start | bob stop | bob restart | bob status | bob chat | bob say "msg"
 - `tools/` — implementations, schemas, registry (TOOL_DISPATCH)
 - `services/` — scheduler, task engine, telegram adapter
 
-**Key globals** (in monolith, or `core/state.py` in modular):
+**Key globals** (`core/state.py`):
 - `RUNTIME_STATE` — mutable dict tracking all runtime state (60+ keys)
 - `TOOL_DISPATCH` — function registry mapping tool names to implementations
 - `SessionLocal` — SQLAlchemy session factory
@@ -92,11 +75,9 @@ Critical env vars (see `.env.example` for all 200+):
 1. Read `AGENTS.md` before making changes
 2. Log all changes in `CHANGELOG.md` when done (template at bottom of file)
 3. **DO NOT** modify `.env` (contains secrets)
-4. **DO NOT** delete `mind_clone_agent.py` (still production)
-5. **DO NOT** add pip packages without updating both `requirements.txt` and `pyproject.toml`
-6. All 31 tests must pass after changes (`pytest`)
-7. Prefer changes to modular package (`src/mind_clone/`) over monolith
-8. General solutions over specific hacks
+4. **DO NOT** add pip packages without updating both `requirements.txt` and `pyproject.toml`
+5. All tests must pass after changes (`pytest`)
+6. General solutions over specific hacks
 
 ## Closed Loop Feedback Engine (Section 5B)
 
@@ -136,8 +117,7 @@ Developer helper scripts. Use these automatically instead of doing tasks manuall
 | Script | When to Use | Command |
 |--------|------------|---------|
 | **bob-check** | After ANY code change | `python scripts/bob_check.py` |
-| **bob-find** | When navigating the monolith | `python scripts/bob_find.py <section>` |
-| **bob-sync** | When changing both runtimes | `python scripts/bob_sync.py` |
+| **bob-find** | When navigating the codebase | `python scripts/bob_find.py <section>` |
 | **bob-newtool** | When adding a new tool | `python scripts/bob_newtool.py <name> <desc>` |
 | **bob-log** | At end of work session | `python scripts/bob_log.py --auto` |
 | **bob-health** | Check if Bob is running | `python scripts/bob_health.py` |
@@ -146,7 +126,6 @@ Developer helper scripts. Use these automatically instead of doing tasks manuall
 | **bob-test-live** | Live end-to-end tests | `python scripts/bob_test_live.py` |
 | **bob-memory** | Inspect memory systems | `python scripts/bob_memory.py stats` |
 | **bob-api** | Test API endpoints | `python scripts/bob_api.py` |
-| **bob-migrate** | Sync monolith → modular | `python scripts/bob_migrate.py all` |
 | **bob-bench** | Measure performance | `python scripts/bob_bench.py latency` |
 | **bob-telegram** | Debug Telegram integration | `python scripts/bob_telegram.py status` |
 | **bob-tasks** | Inspect task engine | `python scripts/bob_tasks.py list` |
@@ -160,7 +139,7 @@ Developer helper scripts. Use these automatically instead of doing tasks manuall
 ## Known Gotchas
 
 - **Python 3.14 on Windows:** `onnxruntime`, `torch`, `fastembed` all fail with DLL errors. GloVe+numpy is the solution.
-- **Proxy env vars** break DuckDuckGo searches — monolith uses `without_proxy_env()` context manager.
+- **Proxy env vars** break DuckDuckGo searches — uses `without_proxy_env()` context manager.
 - **Port 8000 conflicts:** Kill existing python.exe before starting server.
 - **Circuit breaker cascades:** Failed tasks can trip the circuit breaker and block chat. Check `/status/runtime` for breaker state.
 - **Task graph branching:** Max depth is 3 (`_b` suffix count in step_id). Without this limit, recovery chains go infinite.

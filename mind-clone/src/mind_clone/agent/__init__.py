@@ -34,6 +34,14 @@ from .loop import (
     run_agent_loop,
     build_system_prompt,
 )
+from .vectors import (
+    get_embedding,
+    get_embeddings_batch,
+    cosine_similarity,
+    embedding_to_bytes,
+    bytes_to_embedding,
+    GLOVE_DIM,
+)
 
 __all__ = [
     # Identity
@@ -64,4 +72,11 @@ __all__ = [
     "run_agent_turn",
     "run_agent_loop",
     "build_system_prompt",
+    # Vectors
+    "get_embedding",
+    "get_embeddings_batch",
+    "cosine_similarity",
+    "embedding_to_bytes",
+    "bytes_to_embedding",
+    "GLOVE_DIM",
 ]
