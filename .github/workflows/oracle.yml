@@ -8,9 +8,9 @@ name: Oracle Gate
 
 on:
   pull_request:
-    branches: [main, develop]
+    branches: [main, master, develop]
   push:
-    branches: [main, develop]
+    branches: [main, master, develop]
   workflow_dispatch:
 
 jobs:
@@ -102,7 +102,7 @@ jobs:
     name: "Mutation Spot Check"
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && github.event_name == 'push'
     defaults:
       run:
         working-directory: mind-clone
