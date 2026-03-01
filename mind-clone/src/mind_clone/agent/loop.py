@@ -30,7 +30,7 @@ from .identity import load_identity
 
 logger = logging.getLogger("mind_clone.agent.loop")
 
-MAX_TOOL_LOOPS = 10
+MAX_TOOL_LOOPS = 50
 
 # Gap phrases indicating the LLM doesn't have a capability
 _GAP_PHRASES = frozenset({
@@ -48,6 +48,159 @@ _GAP_HINT_MESSAGE = (
     "imports: math, json, re, datetime, hashlib, base64, urllib.parse, "
     "collections, itertools, functools, string, textwrap, csv, io, statistics."
 )
+
+
+def _sanitize_tool_pairs(messages: List[dict]) -> List[dict]:
+    """Sanitize tool_call ↔ tool_response pairs for LLM API compatibility.
+
+    Ensures:
+    1. Every assistant tool_call has a matching tool_response
+    2. Every tool_response has a matching assistant tool_call
+    3. Assistant messages with tool_calls have reasoning_content
+    4. Empty content is replaced with placeholders
+
+    Args:
+        messages: List of message dicts
+
+    Returns:
+        Sanitized message list with orphaned tool_calls/responses removed
+    """
+    if not messages:
+        return []
+
+    # First pass: collect all tool_call_ids from both assistant messages AND tool responses
+    assistant_tool_call_ids = set()
+    tool_response_ids = set()
+
+    for msg in messages:
+        if msg.get("role") == "assistant" and msg.get("tool_calls"):
+            for tc in msg["tool_calls"]:
+                assistant_tool_call_ids.add(tc.get("id"))
+        elif msg.get("role") == "tool":
+            tool_response_ids.add(msg.get("tool_call_id"))
+
+    # Second pass: filter and sanitize
+    result = []
+    for msg in messages:
+        # Handle tool response messages
+        if msg.get("role") == "tool":
+            tool_call_id = msg.get("tool_call_id")
+            # Keep only if there's a matching assistant tool_call
+            if tool_call_id in assistant_tool_call_ids:
+                result.append(msg)
+            # else: drop orphaned tool response
+            continue
+
+        # Handle assistant messages
+        if msg.get("role") == "assistant":
+            msg_copy = msg.copy()
+            tool_calls = msg_copy.get("tool_calls")
+
+            # If no tool_calls, just handle empty content
+            if not tool_calls:
+                if msg_copy.get("content") == "":
+                    msg_copy["content"] = "(empty)"
+                result.append(msg_copy)
+                continue
+
+            # Has tool_calls: verify all have matching responses
+            all_matched = all(
+                tc.get("id") in tool_response_ids for tc in tool_calls
+            )
+
+            if not all_matched:
+                # Partial or no match: strip tool_calls entirely
+                msg_copy.pop("tool_calls", None)
+                if msg_copy.get("content") == "":
+                    msg_copy["content"] = "(empty)"
+                result.append(msg_copy)
+                continue
+
+            # All tool_calls matched: keep and sanitize
+            # 1. Add reasoning_content if missing
+            if "reasoning_content" not in msg_copy:
+                msg_copy["reasoning_content"] = msg_copy.get("content", "")
+
+            # 2. Fix empty content with tool_calls
+            if msg_copy.get("content") == "":
+                msg_copy["content"] = "(tool calls)"
+
+            result.append(msg_copy)
+            continue
+
+        # Non-assistant, non-tool messages (system, user)
+        if msg.get("content") == "" and msg.get("role") in ("user", "system"):
+            # Also sanitize empty content in other roles if needed
+            msg_copy = msg.copy()
+            msg_copy["content"] = "(empty)"
+            result.append(msg_copy)
+            continue
+
+        # Pass through unchanged
+        result.append(msg)
+
+    return result
+
+
+def _classify_message_complexity(message: Optional[str]) -> str:
+    """Classify user message complexity for context injection limits.
+
+    Returns: "simple" | "normal" | "complex"
+    """
+    if not message:
+        return "simple"
+
+    msg_lower = message.lower().strip()
+
+    # Very short → simple
+    if len(msg_lower.split()) <= 3:
+        return "simple"
+
+    # Single short keywords → simple
+    simple_keywords = {"hi", "hello", "hey", "ok", "yes", "no", "thanks", "status"}
+    if msg_lower in simple_keywords:
+        return "simple"
+
+    # Complex keywords (multi-step, reasoning)
+    complex_keywords = {
+        "research", "analyze", "compare", "build", "create", "design",
+        "evaluate", "improve", "optimize", "debug", "refactor",
+        "implement", "develop", "architect", "plan", "strategy",
+    }
+    has_complex = any(kw in msg_lower for kw in complex_keywords)
+    if has_complex and len(msg_lower.split()) >= 4:
+        return "complex"
+
+    # Default to normal
+    return "normal"
+
+
+def _context_top_k(complexity: str) -> Dict[str, int]:
+    """Return context injection limits based on message complexity.
+
+    Maps complexity to how many lessons, artifacts, episodes to inject.
+    """
+    limits = {
+        "simple": {
+            "lessons": 1,
+            "artifacts": 0,
+            "episodes": 0,
+            "tools": 1,
+        },
+        "normal": {
+            "lessons": 3,
+            "artifacts": 2,
+            "episodes": 1,
+            "tools": 2,
+        },
+        "complex": {
+            "lessons": 5,
+            "artifacts": 4,
+            "episodes": 3,
+            "tools": 3,
+        },
+    }
+    return limits.get(complexity, limits["normal"])
 
 
 def _inject_matching_skills(
@@ -257,16 +410,35 @@ def run_agent_loop(owner_id: int, user_message: str) -> str:
 def build_system_prompt(identity: Optional[Dict] = None) -> str:
     """Build system prompt with identity context."""
     lines = [
-        "You are Mind Clone, a sovereign AI agent with the following traits:",
+        "You are Bob (Mind Clone), a sovereign AI agent with the following traits:",
         "- You can use tools to accomplish tasks",
         "- You maintain your own identity and values",
         "- You learn from experience and improve over time",
+        "",
+        f"Model: {settings.llm_model if hasattr(settings, 'llm_model') else 'Kimi K2.5'}",
     ]
 
     if identity:
-        lines.append(f"\nYour UUID: {identity.get('agent_uuid', 'Unknown')}")
-        lines.append(f"Origin: {identity.get('origin_statement', 'Unknown')[:100]}")
+        core_values = identity.get("core_values", [])
+        if core_values:
+            values_str = ", ".join(str(v) for v in core_values)
+            lines.append(f"Core values: {values_str}")
 
-    lines.append("\nUse tools as needed to help the user. Be concise and effective.")
+        agent_uuid = identity.get("agent_uuid", "")
+        if agent_uuid:
+            lines.append(f"Your UUID: {agent_uuid}")
+
+        origin = identity.get("origin_statement", "")
+        if origin:
+            lines.append(f"Origin: {origin[:100]}")
+
+    lines.extend([
+        "",
+        "Tool capabilities:",
+        "- Use the `create_tool` directive to define custom Python functions for tasks",
+        "- Available safe imports: math, json, re, datetime, hashlib, base64, collections",
+        "",
+        "Use tools as needed to help the user. Be concise and effective.",
+    ])
 
     return "\n".join(lines)
