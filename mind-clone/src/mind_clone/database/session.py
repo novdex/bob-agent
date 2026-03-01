@@ -33,6 +33,16 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 def init_db():
     """Initialize database tables."""
     Base.metadata.create_all(bind=engine)
+    # Migrate: add meta_json to users if missing (SQLite ALTER TABLE ADD COLUMN)
+    try:
+        with engine.connect() as conn:
+            cols = [r[1] for r in conn.execute(text("PRAGMA table_info(users)")).fetchall()]
+            if "meta_json" not in cols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN meta_json TEXT"))
+                conn.commit()
+                logger.info("Migration: added meta_json column to users table")
+    except Exception as e:
+        logger.warning("Migration check for meta_json failed: %s", e)
     logger.info("Database initialized at %s", settings.db_file_path)
 
 

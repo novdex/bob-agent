@@ -81,3 +81,7 @@ user_preferences.txt
 
 # Claude Code working data
 .claude/
+
+# CI artifacts
+oracle-results.xml
+coverage.xml

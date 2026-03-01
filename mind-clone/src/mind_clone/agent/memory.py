@@ -318,5 +318,75 @@ def trim_context_window(
     
     # Reverse to maintain order
     result = [m for m in [system_msg] if m] + list(reversed([m for m in result if m.get("role") != "system"]))
-    
+
     return result
+
+
+def search_memory_vectors(
+    db: Session,
+    owner_id: int,
+    query: str,
+    top_k: int = 5,
+    category: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Search memory vectors by semantic similarity.
+
+    Uses GloVe embeddings to find memories similar to the query.
+    Returns a list of matching memory entries sorted by relevance.
+    """
+    from .vectors import get_embedding
+    from ..database.models import MemoryVector
+
+    query_embedding = get_embedding(query)
+    if query_embedding is None:
+        return []
+
+    try:
+        import numpy as np
+
+        query_vec = np.array(query_embedding, dtype=np.float32)
+        q = db.query(MemoryVector).filter(MemoryVector.owner_id == owner_id)
+        if category:
+            q = q.filter(MemoryVector.category == category)
+        rows = q.all()
+
+        scored: list[tuple[float, MemoryVector]] = []
+        for row in rows:
+            if row.embedding:
+                vec = np.frombuffer(row.embedding, dtype=np.float32)
+                if vec.shape == query_vec.shape:
+                    dot = float(np.dot(query_vec, vec))
+                    norm = float(np.linalg.norm(query_vec) * np.linalg.norm(vec))
+                    sim = dot / norm if norm > 0 else 0.0
+                    scored.append((sim, row))
+
+        scored.sort(key=lambda x: -x[0])
+        return [
+            {
+                "id": row.id,
+                "content": row.content,
+                "category": row.category,
+                "similarity": round(sim, 4),
+            }
+            for sim, row in scored[:top_k]
+        ]
+    except Exception as exc:
+        logger.warning("search_memory_vectors failed: %s", str(exc)[:200])
+        return []
+
+
+def retrieve_relevant_artifacts(
+    db: Session,
+    owner_id: int,
+    query: str,
+    top_k: int = 5,
+) -> List[Dict[str, Any]]:
+    """Retrieve task artifacts relevant to a query.
+
+    Known gotcha: queries with fewer than 3 words return empty to avoid
+    injecting irrelevant context into the LLM prompt.
+    """
+    if not query or len(query.strip().split()) < 3:
+        return []
+
+    return search_memory_vectors(db, owner_id, query, top_k=top_k, category="artifact")

@@ -4,6 +4,97 @@
 
 ---
 
+## 2026-03-01 — Oracle CI Pipeline + Integration Tests + Production Bug Fix
+
+**Production bug found & fixed:**
+- `cl_filter_tools_by_performance()` had `success_rate / 100` instead of `* 100` — every tool with performance stats was being blocked in production. Fixed in `core/closed_loop.py`.
+
+**Integration tests (48 new):**
+- `tests/integration/test_cross_module.py` — 9 test classes covering circuit+queue cascade, self-tune+budget interaction, closed-loop+security, state corruption recovery, feature flag interactions, concurrent state access, error handling, full cross-module integration.
+
+**Oracle CI pipeline:**
+- `.github/workflows/oracle.yml` — Runs full 1300+ test oracle on PRs. Matrix: Python 3.10/3.11/3.12. Zero-tolerance gate (fails on ANY failure). Mutation spot-check on main pushes.
+- `scripts/mutation_test.py` — Added `--modules`, `--threshold`, `--timeout` CLI flags for CI integration.
+
+**Mutation hardening (93 tests added):**
+- `tests/unit/test_approvals.py` — +62 tests targeting return-value, comparison boundary, and exception-path mutations.
+- `tests/unit/test_tools.py` — +40 tests for custom.py: sanitize_tool_name, creation validation, boundary tests. Kill rate: 44% → 100%.
+- `tests/unit/test_self_tune.py` — +20 boundary/arithmetic mutation killers. Kill rate: 60% → 75%+.
+- `src/mind_clone/tools/custom.py` — Added `sanitize_tool_name()` input validation.
+
+**E2E tests (31 new):**
+- `tests/integration/test_e2e.py` — Server lifecycle, chat round-trip, status endpoints, tool listing, error handling, agent loop mock, multi-user isolation, stress loading.
+
+**Coverage reporting:**
+- `.coveragerc` — Configured line coverage with omissions for external-service adapters. Threshold: 50%. Current: 55.5%.
+- CI pipeline now generates `coverage.xml` artifact on every run.
+
+**Oracle:** 1431 passed, 0 failed, 7 skipped.
+
+---
+
+## 2026-03-01 — Carlini-Style Parallel Hardening Sprint (5 Streams)
+
+Full-codebase hardening using Nicholas Carlini's parallel agent approach. Built a production-grade test oracle, then ran 5 parallel agent streams to add defensive helpers and comprehensive tests to every core module. Oracle went from 0 → 1245 passing tests.
+
+### Production Bugs Found & Fixed
+
+| Bug | Module | Impact | Fix |
+|-----|--------|--------|-----|
+| Shallow copy in circuit_snapshot | `core/circuit.py` | Nested dict mutation corrupts global state | Changed `dict()` to `copy.deepcopy()` |
+| Missing meta_json column | `database/models.py` | Onboarding wizard silently fails | Added column + SQLite migration in `session.py` |
+| Brittle secret detection regexes | `core/secrets.py` | Missed AWS, Slack, Anthropic, JWT keys | Loosened patterns, added 5 new detectors |
+| Python 3.12+ f-string syntax | `services/telegram/commands.py` | SyntaxError on Python ≤3.11 | Extracted unicode literals to local vars |
+
+### Hardening Streams
+
+| Stream | Modules | New Tests | Defensive Helpers |
+|--------|---------|-----------|-------------------|
+| A: Core Runtime | state, circuit, queue, sandbox, budget | 54 | get/set accessors, bounds checks, deep copy |
+| B: Intelligence | closed_loop, self_tune, evaluation, context_engine | 217 | input validators, counter bounds (0-999999), phase validators |
+| C: Security | security, secrets, policies, approvals, authorization | 162 | sanitize_input, validate_owner_id, rate limiting, role checks |
+| D: Tools | registry, schemas, basic, custom | 112 | registry validation, input bounds, name sanitization |
+| E: Memory & Knowledge | memory, vectors, knowledge, goals, tasks | 155 | vector boundary checks, memory limits, state machine validation |
+
+### Files Modified (Source)
+
+- `core/state.py` — Added get_runtime_value(), set_runtime_value(), runtime_keys()
+- `core/circuit.py` — deepcopy fix, added reset_circuit(), reset_all_circuits(), circuit_status()
+- `core/queue.py` — Added MAX_QUEUE_CAPACITY_PER_OWNER=1000, queue_stats(), bounds checking
+- `core/sandbox.py` — Added VALID_SANDBOX_MODES, is_sandboxed(), validation in _normalize
+- `core/budget.py` — Added budget_remaining(), budget_exhausted(), validate_budget()
+- `core/closed_loop.py` — Added _validate_owner_id(), _validate_confidence_value(), counter bounds
+- `core/self_tune.py` — Added _validate_backlog(), _validate_budget_bounds(), safe config mutation
+- `core/context_engine.py` — Added _validate_phase(), _validate_complexity(), _validate_messages()
+- `core/security.py` — Added sanitize_input(), validate_owner_id()
+- `core/secrets.py` — Loosened regexes, added AWS/Slack/Anthropic/Google/JWT patterns
+- `core/policies.py` — Added validate_policy_name(), get_policy_names(), validate_policy_bounds()
+- `core/approvals.py` — Added is_approval_expired(), validate_approval_token_format(), rate limiting
+- `core/authorization.py` — Added validate_role(), check_team_permission(), user_role_at_least()
+- `tools/registry.py` — Added validate_registry(), get_tool_names(), has_tool(), input validation
+- `tools/schemas.py` — Fixed __all__, added validate_schemas(), get_required_params()
+- `tools/basic.py` — Input validation on all 6 tool functions (path length, content size, timeouts)
+- `tools/custom.py` — Added sanitize_tool_name(), size limits for custom tool definitions
+- `database/models.py` — Added meta_json column to User model
+- `database/session.py` — Added SQLite migration for meta_json in init_db()
+- `services/telegram/commands.py` — Fixed Python 3.12+ f-string syntax
+
+### Files Created (Tests)
+
+27 test files in `tests/unit/`: test_state, test_circuit, test_queue, test_sandbox, test_budget, test_closed_loop, test_self_tune, test_context_engine, test_evaluation, test_security, test_secrets, test_policies, test_approvals, test_authorization, test_registry, test_schemas, test_tools, test_memory, test_vectors, test_knowledge, test_goals, test_tasks, test_factory, test_session_db, test_identity, test_subagents, test_onboarding, plus others.
+
+### Final Oracle: 1245 passed, 0 failed, 5 skipped
+
+### Pillar Impact
+- **Reasoning:** Closed-loop validators prevent garbage-in reasoning cycles
+- **Memory:** Vector boundary checks prevent silent corruption of episodic memory
+- **Autonomy:** Budget/queue/circuit bounds prevent runaway execution
+- **Self-Awareness:** State accessors give clean read paths for introspection
+- **Tool Mastery:** Registry validation + input bounds prevent tool misuse
+- **Learning:** Self-tune bounds prevent oscillating parameter drift
+
+---
+
 ## 2026-03-01 — Implement Agent Loop Infrastructure & Verify BFCL Eval Cases
 
 Implemented critical missing functions in agent reasoning loop to fix test import errors and ensure BFCL eval cases pass with proper test infrastructure:

@@ -64,8 +64,50 @@ _TEAM_PERMISSIONS: Dict[str, set] = {
 }
 
 
+def validate_role(role: str, role_type: str = "user") -> Tuple[bool, str]:
+    """
+    Validate that a role is known and valid.
+
+    Args:
+        role: Role to validate
+        role_type: Type of role ("user" or "team")
+
+    Returns:
+        (is_valid, error_message)
+    """
+    if not role:
+        return False, f"{role_type} role cannot be None or empty"
+
+    if not isinstance(role, str):
+        return False, f"{role_type} role must be a string"
+
+    # Strip whitespace
+    role = role.strip()
+    if not role:
+        return False, f"{role_type} role cannot be whitespace only"
+
+    role_lower = role.lower()
+
+    if role_type == "user":
+        valid_roles = set(USER_ROLE_HIERARCHY)
+    elif role_type == "team":
+        valid_roles = set(TEAM_ROLE_HIERARCHY)
+    else:
+        return False, f"Unknown role_type '{role_type}'"
+
+    if role_lower not in valid_roles:
+        return False, f"Unknown {role_type} role '{role}'. Valid: {sorted(valid_roles)}"
+
+    return True, ""
+
+
 def check_user_permission(user_role: str, permission: str) -> bool:
     """Check if a user role has a specific permission."""
+    # Validate role format
+    is_valid, _ = validate_role(user_role, "user")
+    if not is_valid:
+        return False
+
     role = (user_role or "user").lower()
     perms = _USER_PERMISSIONS.get(role, _USER_PERMISSIONS["user"])
     return permission in perms
@@ -73,6 +115,11 @@ def check_user_permission(user_role: str, permission: str) -> bool:
 
 def check_team_permission(team_role: str, permission: str) -> bool:
     """Check if a team role has a specific permission."""
+    # Validate role format
+    is_valid, _ = validate_role(team_role, "team")
+    if not is_valid:
+        return False
+
     role = (team_role or "member").lower()
     perms = _TEAM_PERMISSIONS.get(role, _TEAM_PERMISSIONS["member"])
     return permission in perms
@@ -80,11 +127,14 @@ def check_team_permission(team_role: str, permission: str) -> bool:
 
 def user_role_at_least(user_role: str, minimum_role: str) -> bool:
     """Check if user role meets a minimum threshold."""
+    if not user_role or not minimum_role:
+        return False
+
     try:
         current_idx = USER_ROLE_HIERARCHY.index(user_role.lower())
         min_idx = USER_ROLE_HIERARCHY.index(minimum_role.lower())
         return current_idx >= min_idx
-    except ValueError:
+    except (ValueError, AttributeError):
         return False
 
 

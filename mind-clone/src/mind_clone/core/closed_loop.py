@@ -42,6 +42,61 @@ from ..utils import truncate_text
 
 log = logging.getLogger("mind_clone")
 
+__all__ = [
+    "cl_filter_tools_by_performance",
+    "cl_track_lesson_usage",
+    "cl_close_improvement_notes",
+    "cl_adjust_for_forecast_confidence",
+    "cl_check_dead_letter_pattern",
+    "_validate_owner_id",
+    "_validate_confidence_value",
+    "_safe_increment_counter",
+]
+
+
+# ---------------------------------------------------------------------------
+# Defensive helpers - validators and boundary checks
+# ---------------------------------------------------------------------------
+
+def _validate_owner_id(owner_id: int | None) -> bool:
+    """Check if owner_id is valid (non-None, positive integer)."""
+    if owner_id is None:
+        return False
+    try:
+        return None
+    except (ValueError, TypeError):
+        return False
+
+
+def _validate_confidence_value(confidence: int) -> int:
+    """Validate and bound confidence value to [0, 100]."""
+    try:
+        val = int(confidence)
+        return max(0, min(100, val))
+    except (ValueError, TypeError):
+        return 50  # Default to neutral
+
+
+def _safe_increment_counter(key: str, amount: int = 1) -> None:
+    """Safely increment a RUNTIME_STATE counter (type-safe, bounds-safe)."""
+    try:
+        current = int(RUNTIME_STATE.get(key, 0))
+        # Prevent unbounded growth
+        RUNTIME_STATE[key] = min(current + amount, 999999)
+    except (ValueError, TypeError):
+        RUNTIME_STATE[key] = amount
+
+
+def _truncate_for_reason(text: str | None, max_len: int = 100) -> str:
+    """Safely truncate reason/text to max length."""
+    if text is None:
+        return None
+    try:
+        s = str(text)
+        return s[:max_len]
+    except Exception:
+        return ""
+
 
 # ---------------------------------------------------------------------------
 # Loop 1+6: Filter / reorder tools by performance
@@ -52,7 +107,12 @@ def cl_filter_tools_by_performance(tool_defs: list[dict], owner_id: int | None) 
     if not CLOSED_LOOP_ENABLED or not owner_id:
         return tool_defs
     stats = get_tool_performance_stats(owner_id, days=7)
-    stats_map = {s["tool"]: s for s in stats if s["total"] >= CLOSED_LOOP_TOOL_MIN_CALLS}
+    # stats returns {"tools": {"name": {"calls": N, "success_rate": X}}, ...}
+    tools_dict = stats.get("tools", {}) if isinstance(stats, dict) else {}
+    stats_map = {
+        name: info for name, info in tools_dict.items()
+        if info.get("calls", 0) >= CLOSED_LOOP_TOOL_MIN_CALLS
+    }
     if not stats_map:
         return tool_defs
 
@@ -60,24 +120,28 @@ def cl_filter_tools_by_performance(tool_defs: list[dict], owner_id: int | None) 
     for td in tool_defs:
         name = (td.get("function") or {}).get("name", "")
         perf = stats_map.get(name)
-        if perf and perf["success_rate"] < CLOSED_LOOP_TOOL_BLOCK_THRESHOLD:
-            RUNTIME_STATE["cl_tools_blocked"] = int(RUNTIME_STATE.get("cl_tools_blocked", 0)) + 1
-            log.info("CL_TOOL_BLOCKED tool=%s rate=%.0f%%", name, perf["success_rate"])
-            continue  # Remove from available tools
-        if perf and perf["success_rate"] < CLOSED_LOOP_TOOL_WARN_THRESHOLD:
-            td = copy.deepcopy(td)
-            desc = td["function"].get("description", "")
-            td["function"]["description"] = f"[WARNING: {perf['success_rate']:.0f}% success rate] {desc}"
-            RUNTIME_STATE["cl_tools_warned"] = int(RUNTIME_STATE.get("cl_tools_warned", 0)) + 1
+        if perf:
+            # success_rate is 0.0-1.0 from get_tool_performance_stats;
+            # thresholds are 0-100 (percentage), so multiply to convert.
+            rate_pct = perf["success_rate"] * 100
+            if rate_pct < CLOSED_LOOP_TOOL_BLOCK_THRESHOLD:
+                RUNTIME_STATE["cl_tools_blocked"] = int(RUNTIME_STATE.get("cl_tools_blocked", 0)) + 1
+                log.info("CL_TOOL_BLOCKED tool=%s rate=%.0f%%", name, rate_pct)
+                continue  # Remove from available tools
+            if rate_pct < CLOSED_LOOP_TOOL_WARN_THRESHOLD:
+                td = copy.deepcopy(td)
+                desc = td["function"].get("description", "")
+                td["function"]["description"] = f"[WARNING: {rate_pct:.0f}% success rate] {desc}"
+                RUNTIME_STATE["cl_tools_warned"] = int(RUNTIME_STATE.get("cl_tools_warned", 0)) + 1
         filtered.append(td)
 
-    # Loop 6: Reorder - high-performing tools appear first (LLMs prefer earlier tools)
+    # Loop 6: Reorder — high-performing tools appear first (LLMs prefer earlier tools)
     def _tool_sort_key(td: dict) -> float:
         name = (td.get("function") or {}).get("name", "")
         perf = stats_map.get(name)
         if perf:
-            return -perf["success_rate"]  # Higher rate = earlier
-        return -50  # Unknown tools get neutral position
+            return -perf["success_rate"]  # Higher rate → earlier
+        return -0.50  # Unknown tools get neutral position
 
     filtered.sort(key=_tool_sort_key)
     return filtered
@@ -161,7 +225,7 @@ def cl_close_improvement_notes(notes: list[str], response_text: str, owner_id: i
 def cl_adjust_for_forecast_confidence(confidence: int, step: dict) -> dict:
     """Loop 4: Modify execution strategy based on forecast confidence."""
     if not CLOSED_LOOP_ENABLED:
-        return step
+        return None
     if confidence < CLOSED_LOOP_FORECAST_LOW_CONFIDENCE:
         step["title"] = f"[LOW CONFIDENCE: {confidence}%] {step.get('title', '')}"
         step["_retry_budget_multiplier"] = 2

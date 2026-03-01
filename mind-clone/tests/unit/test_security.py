@@ -31,7 +31,90 @@ from mind_clone.core.security import (
     validate_outbound_url,
     TOOL_RESULT_MAX_CHARS,
     guarded_tool_result_payload,
+    sanitize_input,
+    validate_owner_id,
 )
+
+
+# ---------------------------------------------------------------------------
+# Input Validation
+# ---------------------------------------------------------------------------
+
+class TestSanitizeInput:
+    """Test input sanitization."""
+
+    def test_clean_text_unchanged(self):
+        text = "Hello world, this is safe."
+        assert sanitize_input(text) == text
+
+    def test_null_bytes_removed(self):
+        text = "Hello\x00world"
+        result = sanitize_input(text)
+        assert "\x00" not in result
+        assert "Hello" in result
+
+    def test_control_chars_removed(self):
+        text = "Hello\x01\x02\x03world"
+        result = sanitize_input(text)
+        assert "\x01" not in result
+        assert "Hello" in result and "world" in result
+
+    def test_newlines_preserved(self):
+        text = "Hello\nworld"
+        assert sanitize_input(text) == text
+
+    def test_tabs_preserved(self):
+        text = "Hello\tworld"
+        assert sanitize_input(text) == text
+
+    def test_length_limiting(self):
+        text = "a" * 15000
+        result = sanitize_input(text, max_length=10000)
+        assert len(result) == 10000
+
+    def test_non_string_input(self):
+        assert sanitize_input(123) == ""
+        assert sanitize_input(None) == ""
+
+    def test_empty_string(self):
+        assert sanitize_input("") == ""
+
+
+class TestValidateOwnerId:
+    """Test owner_id validation."""
+
+    def test_valid_owner_id(self):
+        valid, msg = validate_owner_id(1)
+        assert valid is True
+        assert msg is None
+
+    def test_valid_large_owner_id(self):
+        valid, msg = validate_owner_id(999999)
+        assert valid is True
+
+    def test_none_rejected(self):
+        valid, msg = validate_owner_id(None)
+        assert valid is False
+        assert "None" in msg
+
+    def test_zero_rejected(self):
+        valid, msg = validate_owner_id(0)
+        assert valid is False
+        assert "positive" in msg
+
+    def test_negative_rejected(self):
+        valid, msg = validate_owner_id(-5)
+        assert valid is False
+        assert "positive" in msg
+
+    def test_string_rejected(self):
+        valid, msg = validate_owner_id("123")
+        assert valid is False
+        assert "int" in msg
+
+    def test_float_rejected(self):
+        valid, msg = validate_owner_id(1.5)
+        assert valid is False
 
 
 # ---------------------------------------------------------------------------

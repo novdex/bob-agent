@@ -30,18 +30,28 @@ REQUESTS_SESSION.trust_env = False
 
 
 def tool_read_file(args: dict) -> dict:
-    """Read content from a file."""
+    """Read content from a file.
+
+    Input validation:
+    - file_path must be a non-empty string
+    - file_path length must be <= 4096 chars
+    """
+    if not isinstance(args, dict):
+        return {"ok": False, "error": "args must be a dict"}
+
     file_path = str(args.get("file_path", "")).strip()
     if not file_path:
         return {"ok": False, "error": "file_path is required"}
-    
+    if len(file_path) > 4096:
+        return {"ok": False, "error": "file_path is too long (max 4096 chars)"}
+
     try:
         path = Path(file_path).expanduser()
         if not path.exists():
             return {"ok": False, "error": f"File not found: {file_path}"}
         if not path.is_file():
             return {"ok": False, "error": f"Path is not a file: {file_path}"}
-        
+
         content = path.read_text(encoding="utf-8", errors="replace")
         return {"ok": True, "content": content, "path": str(path)}
     except Exception as e:
@@ -49,38 +59,62 @@ def tool_read_file(args: dict) -> dict:
 
 
 def tool_write_file(args: dict) -> dict:
-    """Write content to a file."""
+    """Write content to a file.
+
+    Input validation:
+    - file_path must be non-empty string (max 4096 chars)
+    - content length must be <= 10MB (10485760 bytes)
+    """
+    if not isinstance(args, dict):
+        return {"ok": False, "error": "args must be a dict"}
+
     file_path = str(args.get("file_path", "")).strip()
     content = str(args.get("content", ""))
     append = bool(args.get("append", False))
-    
+
     if not file_path:
         return {"ok": False, "error": "file_path is required"}
-    
+    if len(file_path) > 4096:
+        return {"ok": False, "error": "file_path is too long (max 4096 chars)"}
+
+    content_bytes = content.encode("utf-8")
+    if len(content_bytes) > 10485760:  # 10MB
+        return {"ok": False, "error": "content is too large (max 10MB)"}
+
     try:
         path = Path(file_path).expanduser()
         path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         mode = "a" if append else "w"
         with open(path, mode, encoding="utf-8") as f:
             f.write(content)
-        
-        return {"ok": True, "path": str(path), "bytes_written": len(content.encode("utf-8"))}
+
+        return {"ok": True, "path": str(path), "bytes_written": len(content_bytes)}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
 
 def tool_list_directory(args: dict) -> dict:
-    """List contents of a directory."""
+    """List contents of a directory.
+
+    Input validation:
+    - dir_path must be non-empty string (max 4096 chars)
+    """
+    if not isinstance(args, dict):
+        return {"ok": False, "error": "args must be a dict"}
+
     dir_path = str(args.get("dir_path", ".")).strip()
-    
+
+    if len(dir_path) > 4096:
+        return {"ok": False, "error": "dir_path is too long (max 4096 chars)"}
+
     try:
         path = Path(dir_path).expanduser()
         if not path.exists():
             return {"ok": False, "error": f"Directory not found: {dir_path}"}
         if not path.is_dir():
             return {"ok": False, "error": f"Path is not a directory: {dir_path}"}
-        
+
         items = []
         for item in path.iterdir():
             items.append({
@@ -88,20 +122,37 @@ def tool_list_directory(args: dict) -> dict:
                 "type": "directory" if item.is_dir() else "file",
                 "size": item.stat().st_size if item.is_file() else None,
             })
-        
+
         return {"ok": True, "path": str(path), "items": items}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
 
 def tool_run_command(args: dict) -> dict:
-    """Run a shell command."""
+    """Run a shell command.
+
+    Input validation:
+    - command must be non-empty string (max 4096 chars)
+    - timeout must be positive integer between 1 and 3600 seconds
+    """
+    if not isinstance(args, dict):
+        return {"ok": False, "error": "args must be a dict"}
+
     command = str(args.get("command", "")).strip()
-    timeout = int(args.get("timeout", 30))
-    
+    timeout_raw = args.get("timeout", 30)
+
     if not command:
         return {"ok": False, "error": "command is required"}
-    
+    if len(command) > 4096:
+        return {"ok": False, "error": "command is too long (max 4096 chars)"}
+
+    try:
+        timeout = int(timeout_raw)
+        if timeout < 1 or timeout > 3600:
+            return {"ok": False, "error": "timeout must be between 1 and 3600 seconds"}
+    except (ValueError, TypeError):
+        return {"ok": False, "error": "timeout must be a positive integer"}
+
     try:
         result = subprocess.run(
             command,
@@ -123,19 +174,36 @@ def tool_run_command(args: dict) -> dict:
 
 
 def tool_execute_python(args: dict) -> dict:
-    """Execute Python code."""
+    """Execute Python code.
+
+    Input validation:
+    - code must be non-empty string (max 100KB)
+    - timeout must be positive integer between 1 and 300 seconds
+    """
+    if not isinstance(args, dict):
+        return {"ok": False, "error": "args must be a dict"}
+
     code = str(args.get("code", "")).strip()
-    timeout = int(args.get("timeout", 15))
-    
+    timeout_raw = args.get("timeout", 15)
+
     if not code:
         return {"ok": False, "error": "code is required"}
-    
+    if len(code.encode("utf-8")) > 102400:  # 100KB
+        return {"ok": False, "error": "code is too large (max 100KB)"}
+
+    try:
+        timeout = int(timeout_raw)
+        if timeout < 1 or timeout > 300:
+            return {"ok": False, "error": "timeout must be between 1 and 300 seconds"}
+    except (ValueError, TypeError):
+        return {"ok": False, "error": "timeout must be a positive integer"}
+
     try:
         # Create temp file for code
         with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
             f.write(code)
             temp_path = f.name
-        
+
         try:
             result = subprocess.run(
                 ["python", temp_path],
@@ -157,17 +225,34 @@ def tool_execute_python(args: dict) -> dict:
 
 
 def tool_search_web(args: dict) -> dict:
-    """Search the web using DuckDuckGo."""
+    """Search the web using DuckDuckGo.
+
+    Input validation:
+    - query must be non-empty string (max 500 chars)
+    - num_results must be positive integer between 1 and 100
+    """
+    if not isinstance(args, dict):
+        return {"ok": False, "error": "args must be a dict"}
+
     query = str(args.get("query", "")).strip()
-    num_results = int(args.get("num_results", 5))
-    
+    num_results_raw = args.get("num_results", 5)
+
     if not query:
         return {"ok": False, "error": "query is required"}
-    
+    if len(query) > 500:
+        return {"ok": False, "error": "query is too long (max 500 chars)"}
+
+    try:
+        num_results = int(num_results_raw)
+        if num_results < 1 or num_results > 100:
+            return {"ok": False, "error": "num_results must be between 1 and 100"}
+    except (ValueError, TypeError):
+        return {"ok": False, "error": "num_results must be a positive integer"}
+
     try:
         with DDGS() as ddgs:
             results = list(ddgs.text(query, max_results=num_results))
-        
+
         return {
             "ok": True,
             "query": query,

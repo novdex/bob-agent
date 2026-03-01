@@ -83,14 +83,17 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     metrics = runtime_metrics()
     alerts = metrics.get("runtime_alerts", [])
 
+    _ok = "\u2705"  # checkmark
+    _no = "\u274c"  # cross
+
     status_lines = [
         "\U0001f4ca *System Status*",
         "",
         f"*Runtime:*",
-        f"\u2022 Worker: {'\u2705' if metrics.get('worker_alive') else '\u274c'}",
-        f"\u2022 Spine: {'\u2705' if metrics.get('spine_supervisor_alive') else '\u274c'}",
-        f"\u2022 DB: {'\u2705' if metrics.get('db_healthy') else '\u274c'}",
-        f"\u2022 Webhook: {'\u2705' if metrics.get('webhook_registered') else '\u274c'}",
+        f"\u2022 Worker: {_ok if metrics.get('worker_alive') else _no}",
+        f"\u2022 Spine: {_ok if metrics.get('spine_supervisor_alive') else _no}",
+        f"\u2022 DB: {_ok if metrics.get('db_healthy') else _no}",
+        f"\u2022 Webhook: {_ok if metrics.get('webhook_registered') else _no}",
         "",
         f"*Queue:*",
         f"\u2022 Mode: {metrics.get('command_queue_mode', 'unknown')}",

@@ -3,6 +3,7 @@ Command queue utilities with steer/followup mode support.
 """
 
 import logging
+from typing import Dict, Any
 
 from ..config import COMMAND_QUEUE_MODE
 from .state import OWNER_QUEUE_COUNTS, OWNER_STATE_LOCK
@@ -16,6 +17,9 @@ VALID_QUEUE_MODES = {"off", "on", "auto", "steer", "followup", "collect"}
 
 # Lane definitions matching the monolith
 VALID_LANES = {"default", "interactive", "background", "batch", "cron", "research", "api", "telegram", "task"}
+
+# Max queue capacity per owner (hard limit to prevent unbounded growth)
+MAX_QUEUE_CAPACITY_PER_OWNER = 1000
 
 
 def command_queue_enabled() -> bool:
@@ -83,8 +87,22 @@ def is_owner_busy_or_backlogged(owner_id: int) -> bool:
 
 
 def increment_owner_queue(owner_id: int) -> int:
+    """Increment queue count for owner, with bounds checking.
+
+    Raises:
+        ValueError: If queue is at max capacity
+    """
     with OWNER_STATE_LOCK:
-        OWNER_QUEUE_COUNTS[owner_id] = OWNER_QUEUE_COUNTS.get(owner_id, 0) + 1
+        current = OWNER_QUEUE_COUNTS.get(owner_id, 0)
+        if current >= MAX_QUEUE_CAPACITY_PER_OWNER:
+            logger.warning(
+                "increment_owner_queue: max capacity reached owner_id=%d current=%d",
+                owner_id, current
+            )
+            raise ValueError(
+                f"Queue at max capacity ({MAX_QUEUE_CAPACITY_PER_OWNER}) for owner {owner_id}"
+            )
+        OWNER_QUEUE_COUNTS[owner_id] = current + 1
         return OWNER_QUEUE_COUNTS[owner_id]
 
 
@@ -189,6 +207,27 @@ def get_lane_semaphore(lane: str):
     return COMMAND_QUEUE_LANE_SEMAPHORES.get(lane)
 
 
+def queue_stats() -> Dict[str, Any]:
+    """Get queue statistics across all owners.
+
+    Returns:
+        Dict with keys: owner_count, total_queued, max_capacity, owners_at_capacity
+    """
+    with OWNER_STATE_LOCK:
+        owner_count = len(OWNER_QUEUE_COUNTS)
+        total_queued = sum(OWNER_QUEUE_COUNTS.values())
+        owners_at_capacity = sum(
+            1 for count in OWNER_QUEUE_COUNTS.values()
+            if count >= MAX_QUEUE_CAPACITY_PER_OWNER
+        )
+    return {
+        "owner_count": owner_count,
+        "total_queued": total_queued,
+        "max_capacity": MAX_QUEUE_CAPACITY_PER_OWNER,
+        "owners_at_capacity": owners_at_capacity,
+    }
+
+
 __all__ = [
     "command_queue_enabled",
     "effective_command_queue_mode",
@@ -202,6 +241,8 @@ __all__ = [
     "ensure_command_queue_workers_running",
     "cancel_command_queue_workers",
     "set_owner_queue_mode",
+    "queue_stats",
     "COMMAND_QUEUE_MODE",
     "COMMAND_QUEUE_WORKER_COUNT",
+    "MAX_QUEUE_CAPACITY_PER_OWNER",
 ]

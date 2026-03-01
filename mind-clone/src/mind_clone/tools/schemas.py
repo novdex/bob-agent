@@ -4,7 +4,7 @@ OpenAI function calling schemas for all tools.
 
 from __future__ import annotations
 
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 
 # Web & Research Tools
 SEARCH_WEB_SCHEMA = {
@@ -357,14 +357,70 @@ def get_tool_schema_by_name(name: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+def validate_schemas() -> bool:
+    """Validate all schemas have required keys: type, function with name+description+parameters.
+
+    Returns True if all schemas are valid, False otherwise.
+    """
+    import logging
+    logger = logging.getLogger("mind_clone.tools.schemas")
+
+    for idx, schema in enumerate(ALL_TOOL_SCHEMAS):
+        if "type" not in schema or schema["type"] != "function":
+            logger.error("SCHEMA_VALIDATION_FAIL index=%d missing_type_or_not_function", idx)
+            return False
+        if "function" not in schema:
+            logger.error("SCHEMA_VALIDATION_FAIL index=%d missing_function", idx)
+            return False
+
+        func = schema["function"]
+        if "name" not in func or not func.get("name"):
+            logger.error("SCHEMA_VALIDATION_FAIL index=%d missing_function_name", idx)
+            return False
+        if "description" not in func or not func.get("description"):
+            logger.error("SCHEMA_VALIDATION_FAIL index=%d missing_function_description", idx)
+            return False
+        if "parameters" not in func:
+            logger.error("SCHEMA_VALIDATION_FAIL index=%d missing_parameters", idx)
+            return False
+
+    logger.info("SCHEMA_VALIDATION_OK schemas=%d", len(ALL_TOOL_SCHEMAS))
+    return True
+
+
+def get_required_params(schema_name: str) -> List[str]:
+    """Get list of required parameter names for a schema.
+
+    Args:
+        schema_name: Name of the tool schema (e.g. 'search_web')
+
+    Returns:
+        List of required parameter names, empty list if schema not found.
+    """
+    schema = get_tool_schema_by_name(schema_name)
+    if not schema:
+        return []
+
+    params = schema.get("function", {}).get("parameters", {})
+    return params.get("required", [])
+
+
+def get_all_schema_names() -> List[str]:
+    """Get sorted list of all schema names."""
+    return sorted([s["function"]["name"] for s in ALL_TOOL_SCHEMAS])
+
+
 # Alias for backward compatibility
 TOOL_DEFINITIONS = ALL_TOOL_SCHEMAS
 
 __all__ = [
     "ALL_TOOL_SCHEMAS",
     "TOOL_DEFINITIONS",
-    "get_all_tool_schemas",
+    "get_tool_schemas",
     "get_tool_schema_by_name",
+    "validate_schemas",
+    "get_required_params",
+    "get_all_schema_names",
     "SEARCH_WEB_SCHEMA",
     "READ_WEBPAGE_SCHEMA",
     "DEEP_RESEARCH_SCHEMA",
@@ -377,17 +433,10 @@ __all__ = [
     "SAVE_RESEARCH_NOTE_SCHEMA",
     "RESEARCH_MEMORY_SEARCH_SCHEMA",
     "SEMANTIC_MEMORY_SEARCH_SCHEMA",
-    "CREATE_TASK_SCHEMA",
-    "LIST_TASKS_SCHEMA",
-    "GET_TASK_SCHEMA",
-    "CANCEL_TASK_SCHEMA",
-    "CREATE_GOAL_SCHEMA",
-    "LIST_GOALS_SCHEMA",
     "BROWSER_OPEN_SCHEMA",
+    "BROWSER_GET_TEXT_SCHEMA",
     "BROWSER_CLICK_SCHEMA",
     "BROWSER_TYPE_SCHEMA",
     "BROWSER_SCREENSHOT_SCHEMA",
-    "BROWSER_EXECUTE_JS_SCHEMA",
-    "BROWSER_NAVIGATE_SCHEMA",
     "BROWSER_CLOSE_SCHEMA",
 ]

@@ -411,7 +411,25 @@ def merge_to_main(agent_id: str, task_id: str, worktree_path: Path, log: logging
                 return False
             log.info("Committed uncommitted changes in worktree")
 
-        # Step 2: Check if branch has commits ahead of main
+        # Step 2: Rebase onto latest main to absorb other agents' merges.
+        # This prevents merge conflicts when multiple agents modify the same files.
+        main_branch = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=str(ROOT_DIR), capture_output=True, text=True, timeout=10,
+        ).stdout.strip() or "master"
+
+        rebase_result = subprocess.run(
+            ["git", "rebase", main_branch],
+            cwd=str(worktree_path), capture_output=True, text=True, timeout=60,
+        )
+        if rebase_result.returncode != 0:
+            log.warning(f"Rebase failed, will try direct merge: {rebase_result.stderr.strip()[:200]}")
+            subprocess.run(
+                ["git", "rebase", "--abort"],
+                cwd=str(worktree_path), capture_output=True, timeout=10,
+            )
+
+        # Step 3: Check if branch has commits ahead of main
         ahead_check = subprocess.run(
             ["git", "rev-list", "--count", f"HEAD..{branch}"],
             cwd=str(ROOT_DIR), capture_output=True, text=True, timeout=10,
@@ -424,7 +442,7 @@ def merge_to_main(agent_id: str, task_id: str, worktree_path: Path, log: logging
 
         log.info(f"Branch {branch} has {commits_ahead} commit(s) to merge")
 
-        # Step 3: Stash dirty working tree in main repo (if any)
+        # Step 4: Stash dirty working tree in main repo (if any)
         main_status = subprocess.run(
             ["git", "status", "--porcelain"],
             cwd=str(ROOT_DIR), capture_output=True, text=True, timeout=10,
@@ -439,7 +457,7 @@ def merge_to_main(agent_id: str, task_id: str, worktree_path: Path, log: logging
             if stashed:
                 log.debug("Stashed main repo working tree before merge")
 
-        # Step 4: Merge branch into main
+        # Step 5: Merge branch into main
         current_branch = subprocess.run(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
             cwd=str(ROOT_DIR), capture_output=True, text=True, timeout=10,
@@ -456,7 +474,6 @@ def merge_to_main(agent_id: str, task_id: str, worktree_path: Path, log: logging
                 ["git", "merge", "--abort"],
                 cwd=str(ROOT_DIR), capture_output=True, timeout=10,
             )
-            # Restore stash if we stashed
             if stashed:
                 subprocess.run(
                     ["git", "stash", "pop"],
@@ -466,7 +483,7 @@ def merge_to_main(agent_id: str, task_id: str, worktree_path: Path, log: logging
 
         log.info(f"Merged {branch} to {current_branch} ({commits_ahead} commit(s))")
 
-        # Step 5: Restore stashed working tree
+        # Step 6: Restore stashed working tree
         if stashed:
             subprocess.run(
                 ["git", "stash", "pop"],

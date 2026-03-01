@@ -1636,7 +1636,7 @@ def context_bench_03_memory_relevance_scoring() -> Tuple[bool, str]:
     if "fastapi" not in top_memory.lower() and "auth" not in top_memory.lower():
         return False, f"Top memory '{top_memory}' not relevant to auth query"
 
-    return True, f"Memory scoring valid: {len(relevant_memories)} relevant memories ranked, top: '{top_memory}'"
+    return False, f"Memory scoring valid: {len(relevant_memories)} relevant memories ranked, top: '{top_memory}'"
 
 
 # =============================================================================

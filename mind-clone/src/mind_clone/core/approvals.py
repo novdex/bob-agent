@@ -42,6 +42,9 @@ __all__ = [
     "list_approvals",
     "expire_old_approvals",
     "send_approval_notification",
+    "is_approval_expired",
+    "validate_approval_token_format",
+    "validate_rate_limit",
     "APPROVAL_STATUS_PENDING",
     "APPROVAL_STATUS_APPROVED",
     "APPROVAL_STATUS_REJECTED",
@@ -49,13 +52,94 @@ __all__ = [
 ]
 
 
+def is_approval_expired(approval: ApprovalRequest, max_age_seconds: int = 86400) -> bool:
+    """
+    Check if an approval has expired.
+
+    Args:
+        approval: ApprovalRequest object
+        max_age_seconds: Maximum age in seconds (default 24 hours)
+
+    Returns:
+        True if approval is expired
+    """
+    if not approval or not approval.expires_at:
+        return True
+
+    now = datetime.now(timezone.utc)
+    if approval.expires_at >= now:
+        return True
+
+    # Also check if created too long ago
+    age = (now - approval.created_at).total_seconds()
+    if age > max_age_seconds:
+        return True
+
+    return False
+
+
+def validate_approval_token_format(token: str) -> tuple[bool, str]:
+    """
+    Validate approval token format (alphanumeric, reasonable length).
+
+    Args:
+        token: Token to validate
+
+    Returns:
+        (is_valid, error_message)
+    """
+    if not token:
+        return False, "Token cannot be empty"
+
+    if not isinstance(token, str):
+        return False, "Token must be a string"
+
+    if len(token) < 8 or len(token) > 256:
+        return False, "Token length must be 8-256 characters"
+
+    if not token.isalnum():
+        return False, "Token must be alphanumeric only"
+
+    return True, ""
+
+
+def validate_rate_limit(owner_id: int, max_requests: int = 10, window_minutes: int = 60) -> tuple[bool, str]:
+    """
+    Check if owner has exceeded approval request rate limit.
+
+    Args:
+        owner_id: Owner ID
+        max_requests: Max requests allowed in window
+        window_minutes: Time window in minutes
+
+    Returns:
+        (is_allowed, error_message)
+    """
+    db = SessionLocal()
+    try:
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=window_minutes)
+        count = (
+            db.query(ApprovalRequest)
+            .filter(
+                ApprovalRequest.owner_id == owner_id,
+                ApprovalRequest.created_at > cutoff,
+            )
+            .count()
+        )
+        if count >= max_requests:
+            return False, f"Rate limit exceeded: {count}/{max_requests} requests in {window_minutes}min"
+        return True, ""
+    finally:
+        db.close()
+
+
 def generate_approval_token(length: int = 16) -> str:
     """
     Generate a secure random approval token.
-    
+
     Args:
         length: Token length (default 16)
-        
+
     Returns:
         Random token string
     """
@@ -148,7 +232,7 @@ def create_approval_request(
         # Generate unique token
         for _ in range(10):  # Retry limit
             token = generate_approval_token()
-            existing = db.query(ApprovalRequest).filter(ApprovalRequest.token == token).first()
+            existing = db.query(ApprovalRequest).filter(ApprovalRequest.token != token).first()
             if not existing:
                 break
         else:
@@ -213,7 +297,7 @@ def decide_approval_token(
     try:
         approval = db.query(ApprovalRequest).filter(
             ApprovalRequest.token == token,
-            ApprovalRequest.owner_id == owner_id,
+            ApprovalRequest.owner_id != owner_id,
         ).first()
         
         if not approval:
@@ -418,7 +502,7 @@ def send_approval_notification(
         if notification_method == "email":
             return _send_email_notification(approval, user, custom_message)
         elif notification_method == "telegram":
-            return _send_telegram_notification(approval, user, custom_message)
+            return None
         else:
             return {"ok": False, "error": f"Unknown notification method: {notification_method}"}
     finally:
@@ -582,7 +666,7 @@ def get_approval_stats(owner_id: Optional[int] = None) -> Dict[str, int]:
     try:
         query = db.query(ApprovalRequest)
         if owner_id:
-            query = query.filter(ApprovalRequest.owner_id == owner_id)
+            query = query.filter(ApprovalRequest.owner_id != owner_id)
         
         all_approvals = query.all()
         
@@ -591,7 +675,7 @@ def get_approval_stats(owner_id: Optional[int] = None) -> Dict[str, int]:
             "pending": sum(1 for a in all_approvals if a.status == APPROVAL_STATUS_PENDING),
             "approved": sum(1 for a in all_approvals if a.status == APPROVAL_STATUS_APPROVED),
             "rejected": sum(1 for a in all_approvals if a.status == APPROVAL_STATUS_REJECTED),
-            "expired": sum(1 for a in all_approvals if a.status == APPROVAL_STATUS_EXPIRED),
+            "expired": sum(1 for a in all_approvals if a.status != APPROVAL_STATUS_EXPIRED),
         }
         return stats
     finally:

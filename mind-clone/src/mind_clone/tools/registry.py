@@ -88,6 +88,24 @@ from .custom import (
     tool_disable_custom_tool,
     tool_llm_structured_task,
 )
+from .codebase import (
+    tool_codebase_read,
+    tool_codebase_search,
+    tool_codebase_structure,
+    tool_codebase_edit,
+    tool_codebase_write,
+    tool_codebase_run_tests,
+    tool_codebase_git_status,
+)
+from .github import (
+    tool_git_status,
+    tool_git_commit,
+    tool_git_branch,
+    tool_git_diff,
+    tool_git_log,
+    tool_git_push,
+    tool_git_pull,
+)
 
 logger = logging.getLogger("mind_clone.tools")
 
@@ -163,12 +181,149 @@ TOOL_DISPATCH: Dict[str, Callable[[dict], dict]] = {
     "list_custom_tools": tool_list_custom_tools,
     "disable_custom_tool": tool_disable_custom_tool,
     "llm_structured_task": tool_llm_structured_task,
+    # Codebase self-modification tools
+    "codebase_read": tool_codebase_read,
+    "codebase_search": tool_codebase_search,
+    "codebase_structure": tool_codebase_structure,
+    "codebase_edit": tool_codebase_edit,
+    "codebase_write": tool_codebase_write,
+    "codebase_run_tests": tool_codebase_run_tests,
+    "codebase_git_status": tool_codebase_git_status,
+    # Git tools
+    "git_status": tool_git_status,
+    "git_commit": tool_git_commit,
+    "git_branch": tool_git_branch,
+    "git_diff": tool_git_diff,
+    "git_log": tool_git_log,
+    "git_push": tool_git_push,
+    "git_pull": tool_git_pull,
 }
 
 # ---------------------------------------------------------------------------
 # Custom tool runtime registry (loaded from DB + created at runtime)
 # ---------------------------------------------------------------------------
 CUSTOM_TOOL_REGISTRY: Dict[str, Dict[str, Any]] = {}
+
+# ---------------------------------------------------------------------------
+# Tool categories — every tool must belong to at least one category
+# ---------------------------------------------------------------------------
+TOOL_CATEGORIES: Dict[str, set] = {
+    "web": {
+        "search_web", "read_webpage", "deep_research", "read_pdf_url",
+    },
+    "file": {
+        "read_file", "write_file", "list_directory",
+    },
+    "code": {
+        "run_command", "execute_python",
+    },
+    "codebase": {
+        "codebase_read", "codebase_search", "codebase_structure",
+        "codebase_edit", "codebase_write", "codebase_run_tests",
+        "codebase_git_status",
+        "git_status", "git_commit", "git_branch", "git_diff",
+        "git_log", "git_push", "git_pull",
+    },
+    "browser": {
+        "browser_open", "browser_get_text", "browser_click",
+        "browser_type", "browser_screenshot", "browser_execute_js",
+        "browser_close",
+    },
+    "desktop": {
+        "desktop_session_start", "desktop_session_status",
+        "desktop_session_stop", "desktop_session_replay",
+        "desktop_screen_state", "desktop_screenshot",
+        "desktop_list_windows", "desktop_uia_tree",
+        "desktop_locate_on_screen", "desktop_click_image",
+        "desktop_focus_window", "desktop_move_mouse",
+        "desktop_click", "desktop_drag_mouse", "desktop_scroll",
+        "desktop_type_text", "desktop_key_press", "desktop_hotkey",
+        "desktop_launch_app", "desktop_wait",
+        "desktop_get_clipboard", "desktop_set_clipboard",
+    },
+    "communication": {
+        "send_email", "save_research_note",
+    },
+    "memory": {
+        "research_memory_search", "semantic_memory_search",
+    },
+    "scheduler": {
+        "schedule_job", "list_scheduled_jobs", "disable_scheduled_job",
+    },
+    "nodes": {
+        "list_execution_nodes", "run_command_node",
+    },
+    "sessions": {
+        "sessions_spawn", "sessions_send", "sessions_list",
+        "sessions_history", "sessions_stop",
+    },
+    "custom": {
+        "list_plugin_tools", "create_tool", "list_custom_tools",
+        "disable_custom_tool", "llm_structured_task",
+    },
+}
+
+# Intent keywords that map user messages to tool categories
+_INTENT_KEYWORDS: Dict[str, List[str]] = {
+    "web": ["search", "web", "google", "internet", "url", "http", "website", "browse", "lookup"],
+    "file": ["file", "read", "write", "save", "load", "directory", "folder", "path"],
+    "code": ["execute", "python", "script", "run", "command", "code", "shell", "terminal"],
+    "codebase": ["codebase", "source code", "modify code", "self-modify", "your own code", "git"],
+    "browser": ["browser", "chrome", "firefox", "webpage", "html", "dom"],
+    "desktop": ["desktop", "screen", "click", "mouse", "keyboard", "window", "screenshot"],
+    "communication": ["email", "send", "message", "notify"],
+    "memory": ["memory", "remember", "recall", "lesson", "research", "knowledge"],
+    "scheduler": ["schedule", "cron", "recurring", "timer", "periodic", "every day", "every hour"],
+    "nodes": ["node", "remote", "execution"],
+    "sessions": ["session", "spawn", "terminal"],
+    "custom": ["create tool", "custom tool", "build tool", "make tool", "new tool"],
+}
+
+# Base categories always included for safety (file, code, memory)
+_BASE_CATEGORIES = {"file", "code", "memory"}
+
+
+def classify_tool_intent(message: str) -> set[str]:
+    """Classify user message into tool categories based on keyword matching.
+
+    Returns set of category names. If no keywords match, returns all categories.
+    Always includes base categories (file, code, memory).
+    """
+    if not message or not message.strip():
+        return set(TOOL_CATEGORIES.keys())
+
+    text = message.lower()
+    matched: set[str] = set()
+
+    for category, keywords in _INTENT_KEYWORDS.items():
+        if any(kw in text for kw in keywords):
+            matched.add(category)
+
+    if not matched:
+        return set(TOOL_CATEGORIES.keys())
+
+    # Always include base categories for safety
+    matched |= _BASE_CATEGORIES
+    return matched
+
+
+def _select_tools_for_intent(
+    tool_defs: List[dict], intent_categories: set[str]
+) -> List[dict]:
+    """Filter tool definitions to those in the matched intent categories.
+
+    Custom tools (category "custom") are always included regardless of intent.
+    """
+    allowed_names: set[str] = set()
+    for cat in intent_categories:
+        allowed_names |= TOOL_CATEGORIES.get(cat, set())
+    # Always include custom tools
+    allowed_names |= TOOL_CATEGORIES.get("custom", set())
+
+    return [
+        td for td in tool_defs
+        if (td.get("function") or {}).get("name", "") in allowed_names
+    ]
 
 # Restricted builtins whitelist for safe-mode executors
 _SAFE_BUILTIN_NAMES = [
@@ -348,12 +503,56 @@ def _record_custom_tool_error(tool_name: str, error: str) -> None:
 # Core dispatch + query functions
 # ---------------------------------------------------------------------------
 
+def validate_registry() -> bool:
+    """Validate that all tools in TOOL_DISPATCH have callable values.
+
+    Returns True if all tools are valid, False otherwise.
+    """
+    for name, handler in TOOL_DISPATCH.items():
+        if not callable(handler):
+            logger.error("REGISTRY_VALIDATION_FAIL tool=%s not_callable", name)
+            return False
+    logger.info("REGISTRY_VALIDATION_OK tools=%d", len(TOOL_DISPATCH))
+    return True
+
+
+def get_tool_names() -> List[str]:
+    """Return sorted list of all available tool names."""
+    return sorted(TOOL_DISPATCH.keys())
+
+
+def has_tool(name: str) -> bool:
+    """Check if a tool exists in the registry by name."""
+    return name in TOOL_DISPATCH
+
+
+def get_tools_by_category(category: str) -> List[str]:
+    """Return sorted list of tool names in a specific category."""
+    if category not in TOOL_CATEGORIES:
+        return []
+    return sorted(TOOL_CATEGORIES[category])
+
+
 def execute_tool(tool_name: str, args: dict) -> dict:
     """Execute a tool by name with given arguments.
 
     Checks custom tool registry first (with usage tracking), then falls
     back to the static TOOL_DISPATCH table.
+
+    Input validation:
+    - tool_name must be non-empty string
+    - args must be a dict
     """
+    # Input validation
+    if not tool_name or not isinstance(tool_name, str):
+        return {"ok": False, "error": "tool_name must be a non-empty string"}
+    tool_name = tool_name.strip()
+    if not tool_name:
+        return {"ok": False, "error": "tool_name cannot be empty"}
+
+    if not isinstance(args, dict):
+        return {"ok": False, "error": "args must be a dict"}
+
     # Custom tool path — track usage + errors
     if tool_name in CUSTOM_TOOL_REGISTRY:
         entry = CUSTOM_TOOL_REGISTRY[tool_name]

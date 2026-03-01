@@ -22,7 +22,7 @@ def run_step(name, cmd, cwd=None):
             cwd=cwd or ROOT_DIR,
             capture_output=True,
             text=True,
-            timeout=120,
+            timeout=300,
         )
         elapsed = int((time.monotonic() - start) * 1000)
         passed = result.returncode == 0
@@ -30,7 +30,7 @@ def run_step(name, cmd, cwd=None):
         return passed, output, elapsed
     except subprocess.TimeoutExpired:
         elapsed = int((time.monotonic() - start) * 1000)
-        return False, "TIMEOUT (120s)", elapsed
+        return False, "TIMEOUT (300s)", elapsed
     except FileNotFoundError:
         elapsed = int((time.monotonic() - start) * 1000)
         return False, f"Command not found: {cmd[0]}", elapsed

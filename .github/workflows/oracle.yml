@@ -1,0 +1,136 @@
+# Oracle CI Gate — the full test suite must pass with zero failures.
+# This is the primary quality gate for the Bob AGI platform.
+# 1300+ tests covering all 8 intelligence pillars.
+#
+# Blocks merge on ANY failure. No exceptions.
+
+name: Oracle Gate
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+  workflow_dispatch:
+
+jobs:
+  oracle:
+    name: "Oracle (${{ matrix.python-version }})"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: mind-clone
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: mind-clone/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
+
+      - name: Compile check
+        run: python -m compileall -q src/
+
+      - name: Run Oracle (full test suite with coverage)
+        env:
+          MIND_CLONE_DB_PATH: ${{ runner.temp }}/mind_clone_ci.db
+          PYTHONPATH: src
+          # Disable features that need external services
+          TELEGRAM_BOT_TOKEN: ""
+          KIMI_API_KEY: "ci-dummy"
+          OS_SANDBOX_MODE: "off"
+        run: |
+          pytest tests/ \
+            -v \
+            --tb=short \
+            --strict-markers \
+            --junitxml=oracle-results.xml \
+            --cov=mind_clone \
+            --cov-config=.coveragerc \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            -q
+
+      - name: Verify zero failures
+        if: always()
+        run: |
+          python -c "
+          import xml.etree.ElementTree as ET
+          tree = ET.parse('oracle-results.xml')
+          root = tree.getroot()
+          ts = root.find('.//testsuite') or root
+          tests = int(ts.get('tests', 0))
+          failures = int(ts.get('failures', 0))
+          errors = int(ts.get('errors', 0))
+          skipped = int(ts.get('skipped', 0))
+          print(f'Oracle: {tests} tests, {failures} failures, {errors} errors, {skipped} skipped')
+          if failures > 0 or errors > 0:
+              print('ORACLE GATE FAILED — zero tolerance for failures.')
+              raise SystemExit(1)
+          if tests < 1200:
+              print(f'ORACLE GATE WARNING — only {tests} tests ran (expected 1200+). Possible import issues.')
+              raise SystemExit(1)
+          print('ORACLE GATE PASSED.')
+          "
+
+      - name: Upload test results and coverage
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: oracle-results-py${{ matrix.python-version }}
+          path: |
+            mind-clone/oracle-results.xml
+            mind-clone/coverage.xml
+
+  # Mutation spot-check — runs on main only (expensive)
+  mutation-spot-check:
+    name: "Mutation Spot Check"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    defaults:
+      run:
+        working-directory: mind-clone
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: mind-clone/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Run mutation spot check (3 critical modules)
+        env:
+          MIND_CLONE_DB_PATH: ${{ runner.temp }}/mind_clone_ci.db
+          PYTHONPATH: src
+          KIMI_API_KEY: "ci-dummy"
+          OS_SANDBOX_MODE: "off"
+        run: |
+          python scripts/mutation_test.py \
+            --modules circuit,security,budget \
+            --threshold 70 \
+            --timeout 45

@@ -19,6 +19,9 @@ logger = logging.getLogger("mind_clone.sandbox")
 # Default TTL for sandbox entries (30 minutes)
 SANDBOX_REGISTRY_MAX_AGE_SECONDS = 1800
 
+# Valid sandbox mode values
+VALID_SANDBOX_MODES = {"off", "docker", "default", "disabled"}
+
 
 def _sandbox_registry_key(owner_id: int, workspace_root: Path) -> str:
     """Build a unique key for the sandbox registry."""
@@ -141,14 +144,45 @@ def _docker_executable():
     return None
 
 
-def _normalize_os_sandbox_mode(mode):
-    """Normalize OS sandbox mode string."""
-    return mode if mode else "disabled"
+def _normalize_os_sandbox_mode(mode: str) -> str:
+    """Normalize OS sandbox mode string with validation.
+
+    Args:
+        mode: The sandbox mode value
+
+    Returns:
+        Normalized mode string (validated against VALID_SANDBOX_MODES)
+    """
+    normalized = mode if mode else "disabled"
+    if normalized not in VALID_SANDBOX_MODES:
+        logger.warning(
+            "_normalize_os_sandbox_mode: invalid mode '%s', using 'disabled'",
+            normalized
+        )
+        return "disabled"
+    return normalized
 
 
 def active_sandbox_containers():
     """List active sandbox containers."""
     return []
+
+
+def is_sandboxed(mode: str = None) -> bool:
+    """Check if sandbox mode is active.
+
+    Args:
+        mode: The sandbox mode to check. If None, checks the global execution_sandbox_profile.
+
+    Returns:
+        True if sandbox is enabled (mode is not 'off' or 'disabled')
+    """
+    if mode is None:
+        mode = execution_sandbox_profile() or "disabled"
+    if isinstance(mode, dict):
+        mode = mode.get("name", "disabled")
+    normalized = _normalize_os_sandbox_mode(str(mode))
+    return normalized not in ("off", "disabled")
 
 
 __all__ = [
@@ -162,4 +196,6 @@ __all__ = [
     "cleanup_sandbox_registry",
     "sandbox_registry_touch",
     "sandbox_registry_snapshot",
+    "is_sandboxed",
+    "VALID_SANDBOX_MODES",
 ]

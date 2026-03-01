@@ -206,6 +206,48 @@ def get_runtime_metrics() -> Dict[str, Any]:
     }
 
 
+def runtime_keys() -> list:
+    """Return a list of all currently set keys in RUNTIME_STATE."""
+    with RUNTIME_STATE_LOCK:
+        return list(RUNTIME_STATE.keys())
+
+
+def get_runtime_value(key: str, default: Any = None) -> Any:
+    """Get a value from RUNTIME_STATE with logging on unknown keys.
+
+    Args:
+        key: The state key to retrieve
+        default: Default value if key not found
+
+    Returns:
+        The value from RUNTIME_STATE or the default
+    """
+    with RUNTIME_STATE_LOCK:
+        if key not in RUNTIME_STATE:
+            _state_logger.warning(
+                "get_runtime_value: unknown key '%s' (returning default=%r)",
+                key, default
+            )
+            return default
+        return RUNTIME_STATE[key]
+
+
+def set_runtime_value(key: str, value: Any) -> None:
+    """Set a value in RUNTIME_STATE, logging warnings on unknown keys.
+
+    Args:
+        key: The state key to set
+        value: The value to set
+    """
+    with RUNTIME_STATE_LOCK:
+        if key not in RUNTIME_STATE:
+            _state_logger.warning(
+                "set_runtime_value: unknown key '%s' (setting to %r)",
+                key, value
+            )
+        RUNTIME_STATE[key] = value
+
+
 def increment_owner_queue(owner_id: int) -> int:
     """Increment queue count for an owner."""
     with OWNER_STATE_LOCK:

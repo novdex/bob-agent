@@ -10,11 +10,48 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Optional
 
 from ..config import settings
 
 logger = logging.getLogger("mind_clone.tools.custom")
+
+
+def sanitize_tool_name(name: str) -> tuple[bool, str]:
+    """Sanitize and validate a custom tool name.
+
+    Rejects names with:
+    - Path separators (/, \\)
+    - Null bytes
+    - Special characters (only alphanumeric, underscore, hyphen allowed)
+
+    Args:
+        name: Tool name to validate
+
+    Returns:
+        Tuple of (is_valid, sanitized_name_or_error_message)
+    """
+    if not name or not isinstance(name, str):
+        return False, "Tool name must be a non-empty string"
+
+    name = name.strip()
+    if not name:
+        return False, "Tool name cannot be empty"
+
+    # Check for path separators and null bytes
+    if "/" in name or "\\" in name or "\x00" in name:
+        return False, "Tool name cannot contain path separators or null bytes"
+
+    # Check length
+    if len(name) > 128:
+        return False, "Tool name is too long (max 128 chars)"
+
+    # Only allow alphanumeric, underscore, hyphen
+    if not re.match(r"^[a-zA-Z0-9_-]+$", name):
+        return False, "Tool name can only contain alphanumeric characters, underscores, and hyphens"
+
+    return True, name
 
 
 def tool_list_plugin_tools(args: dict) -> dict:
@@ -42,6 +79,25 @@ def tool_create_tool(args: dict) -> dict:
 
     if not name or not description or not code:
         return {"ok": False, "error": "Missing required fields: name, description, code"}
+
+    # Sanitize tool name
+    name_valid, name_result = sanitize_tool_name(name)
+    if not name_valid:
+        return {"ok": False, "error": f"Invalid tool name: {name_result}"}
+    name = name_result
+
+    # Validate description length
+    if len(description) > 1000:
+        return {"ok": False, "error": "description is too long (max 1000 chars)"}
+
+    # Validate code size
+    code_bytes = code.encode("utf-8")
+    if len(code_bytes) > 1048576:  # 1MB
+        return {"ok": False, "error": "code is too large (max 1MB)"}
+
+    # Validate parameters JSON size
+    if len(parameters_str.encode("utf-8")) > 102400:  # 100KB
+        return {"ok": False, "error": "parameters JSON is too large (max 100KB)"}
 
     owner_id = int(args.get("_owner_id", 0) or 0)
 

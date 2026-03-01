@@ -14,6 +14,9 @@ from mind_clone.core.budget import (
     create_run_budget,
     budget_should_stop,
     budget_should_degrade,
+    budget_remaining,
+    budget_exhausted,
+    validate_budget,
 )
 
 
@@ -125,3 +128,115 @@ class TestBudgetShouldDegrade:
         )
         # Should not raise ZeroDivisionError
         assert budget_should_degrade(budget) is False
+
+
+# ---------------------------------------------------------------------------
+# budget_remaining
+# ---------------------------------------------------------------------------
+
+class TestBudgetRemaining:
+
+    def test_none_budget(self):
+        result = budget_remaining(None)
+        assert result["seconds_remaining"] == float("inf")
+        assert result["tool_calls_remaining"] == float("inf")
+        assert result["llm_calls_remaining"] == float("inf")
+
+    def test_fresh_budget_full(self):
+        budget = create_run_budget(max_seconds=100, max_tool_calls=50, max_llm_calls=20)
+        remaining = budget_remaining(budget)
+        assert remaining["tool_calls_remaining"] == 50
+        assert remaining["llm_calls_remaining"] == 20
+        # seconds_remaining should be close to 100
+        assert remaining["seconds_remaining"] > 99
+
+    def test_partially_used_budget(self):
+        budget = create_run_budget(max_tool_calls=50, max_llm_calls=20)
+        budget.tool_calls = 30
+        budget.llm_calls = 10
+        remaining = budget_remaining(budget)
+        assert remaining["tool_calls_remaining"] == 20
+        assert remaining["llm_calls_remaining"] == 10
+
+    def test_exhausted_budget_dimension(self):
+        budget = create_run_budget(max_tool_calls=10)
+        budget.tool_calls = 15
+        remaining = budget_remaining(budget)
+        assert remaining["tool_calls_remaining"] == 0  # max(0, ...)
+
+
+# ---------------------------------------------------------------------------
+# budget_exhausted
+# ---------------------------------------------------------------------------
+
+class TestBudgetExhausted:
+
+    def test_none_budget(self):
+        assert budget_exhausted(None) is False
+
+    def test_fresh_budget_not_exhausted(self):
+        budget = create_run_budget()
+        assert budget_exhausted(budget) is False
+
+    def test_tool_calls_exhausted(self):
+        budget = create_run_budget(max_tool_calls=5)
+        budget.tool_calls = 5
+        assert budget_exhausted(budget) is True
+
+    def test_llm_calls_exhausted(self):
+        budget = create_run_budget(max_llm_calls=3)
+        budget.llm_calls = 3
+        assert budget_exhausted(budget) is True
+
+    def test_time_exhausted(self):
+        budget = create_run_budget(max_seconds=1)
+        budget.start_time = time.time() - 2  # 2 seconds ago
+        assert budget_exhausted(budget) is True
+
+    def test_one_over_limit(self):
+        """Exactly at limit should be exhausted."""
+        budget = create_run_budget(max_tool_calls=10)
+        budget.tool_calls = 10
+        assert budget_exhausted(budget) is True
+
+
+# ---------------------------------------------------------------------------
+# validate_budget
+# ---------------------------------------------------------------------------
+
+class TestValidateBudget:
+
+    def test_none_budget(self):
+        assert validate_budget(None) is True
+
+    def test_valid_budget(self):
+        budget = create_run_budget()
+        assert validate_budget(budget) is True
+
+    def test_negative_tool_calls(self):
+        budget = create_run_budget()
+        budget.tool_calls = -1
+        assert validate_budget(budget) is False
+
+    def test_negative_llm_calls(self):
+        budget = create_run_budget()
+        budget.llm_calls = -5
+        assert validate_budget(budget) is False
+
+    def test_negative_max_tool_calls(self):
+        budget = RunBudget(
+            max_seconds=100,
+            max_tool_calls=-10,
+            max_llm_calls=20,
+            start_time=time.time(),
+        )
+        assert validate_budget(budget) is False
+
+    def test_negative_max_llm_calls(self):
+        budget = RunBudget(
+            max_seconds=100,
+            max_tool_calls=50,
+            max_llm_calls=-5,
+            start_time=time.time(),
+        )
+        assert validate_budget(budget) is False

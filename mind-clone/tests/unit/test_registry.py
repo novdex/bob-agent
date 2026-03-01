@@ -14,6 +14,10 @@ from mind_clone.tools.registry import (
     classify_tool_intent,
     _select_tools_for_intent,
     execute_tool,
+    validate_registry,
+    get_tool_names,
+    has_tool,
+    get_tools_by_category,
 )
 
 
@@ -192,3 +196,79 @@ class TestExecuteTool:
         result = execute_tool("crash_tool", {})
         assert result["ok"] is False
         assert "boom" in result.get("error", "")
+
+    @patch("mind_clone.tools.registry.CUSTOM_TOOL_REGISTRY", {})
+    def test_empty_tool_name_returns_error(self):
+        result = execute_tool("", {})
+        assert result["ok"] is False
+        assert "tool_name" in result.get("error", "").lower()
+
+    @patch("mind_clone.tools.registry.CUSTOM_TOOL_REGISTRY", {})
+    def test_none_tool_name_returns_error(self):
+        result = execute_tool(None, {})
+        assert result["ok"] is False
+        assert "tool_name" in result.get("error", "").lower()
+
+    @patch("mind_clone.tools.registry.CUSTOM_TOOL_REGISTRY", {})
+    def test_non_dict_args_returns_error(self):
+        result = execute_tool("search_web", "not a dict")
+        assert result["ok"] is False
+        assert "dict" in result.get("error", "").lower()
+
+    @patch("mind_clone.tools.registry.CUSTOM_TOOL_REGISTRY", {})
+    def test_whitespace_only_tool_name_returns_error(self):
+        result = execute_tool("   ", {})
+        assert result["ok"] is False
+        assert "tool_name" in result.get("error", "").lower()
+
+
+# ---------------------------------------------------------------------------
+# validate_registry, get_tool_names, has_tool, get_tools_by_category
+# ---------------------------------------------------------------------------
+
+class TestRegistryValidation:
+    """Test hardening functions for registry validation."""
+
+    def test_validate_registry_returns_true(self):
+        assert validate_registry() is True
+
+    def test_get_tool_names_returns_sorted_list(self):
+        names = get_tool_names()
+        assert isinstance(names, list)
+        assert len(names) > 0
+        assert names == sorted(names)  # Check it's sorted
+        assert "search_web" in names
+        assert "read_file" in names
+
+    def test_has_tool_finds_existing(self):
+        assert has_tool("search_web") is True
+        assert has_tool("read_file") is True
+        assert has_tool("execute_python") is True
+
+    def test_has_tool_rejects_nonexistent(self):
+        assert has_tool("nonexistent_tool_xyz") is False
+        assert has_tool("fake_tool_12345") is False
+
+    def test_has_tool_rejects_empty(self):
+        assert has_tool("") is False
+
+    def test_get_tools_by_category_returns_sorted(self):
+        web_tools = get_tools_by_category("web")
+        assert isinstance(web_tools, list)
+        assert len(web_tools) > 0
+        assert web_tools == sorted(web_tools)  # Check it's sorted
+        assert "search_web" in web_tools
+
+    def test_get_tools_by_category_file(self):
+        file_tools = get_tools_by_category("file")
+        assert "read_file" in file_tools
+        assert "write_file" in file_tools
+
+    def test_get_tools_by_category_nonexistent_returns_empty(self):
+        result = get_tools_by_category("nonexistent_category_xyz")
+        assert result == []
+
+    def test_get_tools_by_category_custom(self):
+        custom_tools = get_tools_by_category("custom")
+        assert "create_tool" in custom_tools
+        assert "list_custom_tools" in custom_tools

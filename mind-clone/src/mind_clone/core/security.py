@@ -531,3 +531,31 @@ def guarded_tool_result_payload(
         increment_runtime_state("session_tool_result_guard_truncations")
 
     return payload, truncated
+
+
+# ---------------------------------------------------------------------------
+# Defensive helpers — input sanitization
+# ---------------------------------------------------------------------------
+
+def sanitize_input(text: str, max_length: int = 10000) -> str:
+    """Sanitize user-provided text: strip, truncate, remove null/control chars."""
+    if not isinstance(text, str):
+        return ""
+    result = text.strip()
+    # Remove null bytes and control characters (except newlines/tabs)
+    result = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', result)
+    if len(result) > max_length:
+        result = result[:max_length]
+    return result
+
+
+def validate_owner_id(owner_id) -> tuple:
+    """Validate that owner_id is a positive integer. Returns (valid, message).
+    Rejects: None, zero, negative, floats, strings. Only accepts int."""
+    if owner_id is None:
+        return False, "owner_id is None"
+    if not isinstance(owner_id, int) or isinstance(owner_id, bool):
+        return False, f"owner_id must be int, got {type(owner_id).__name__}: {owner_id!r}"
+    if owner_id <= 0:
+        return False, f"owner_id must be positive, got {owner_id}"
+    return True, None

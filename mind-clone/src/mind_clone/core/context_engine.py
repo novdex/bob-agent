@@ -14,9 +14,68 @@ import math
 import re
 from dataclasses import dataclass, field
 from enum import Enum, IntEnum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    pass
 
 logger = logging.getLogger("mind_clone.core.context_engine")
+
+__all__ = [
+    "TaskPhase",
+    "detect_task_phase",
+    "compute_context_budget",
+    "ContextPriority",
+    "ContextWindow",
+    "rank_context_items",
+    "build_smart_context",
+    "_validate_phase",
+    "_validate_complexity",
+    "_validate_messages",
+    "_safe_count_len",
+]
+
+
+# ---------------------------------------------------------------------------
+# Defensive helpers - validators and boundary checks
+# ---------------------------------------------------------------------------
+
+def _validate_phase(phase: Optional['TaskPhase']) -> 'TaskPhase':
+    """Validate task phase, return default if invalid."""
+    try:
+        if isinstance(phase, TaskPhase):
+            return phase
+    except Exception:
+        pass
+    return TaskPhase.UNDERSTANDING
+
+
+def _validate_complexity(complexity: Optional[str]) -> str:
+    """Validate complexity string, return default if invalid."""
+    valid = {"simple", "normal", "complex"}
+    if complexity in valid:
+        return complexity
+    return "normal"
+
+
+def _validate_messages(messages: Optional[List[dict]]) -> List[dict]:
+    """Validate messages list, return empty if invalid."""
+    if messages is None:
+        return []
+    try:
+        if isinstance(messages, list):
+            return messages
+    except Exception:
+        pass
+    return []
+
+
+def _safe_count_len(obj) -> int:
+    """Safely get length of object, return 0 if fails."""
+    try:
+        return len(obj) if obj is not None else 0
+    except (TypeError, AttributeError):
+        return 0
 
 
 # ---------------------------------------------------------------------------

@@ -36,6 +36,70 @@ from ..utils import utc_now_iso
 
 log = logging.getLogger("mind_clone")
 
+__all__ = [
+    "st_tune_queue_mode",
+    "st_tune_session_budget",
+    "st_tune_workers",
+    "st_tune_budget_mode",
+    "st_self_tune",
+    "_validate_backlog",
+    "_validate_budget_bounds",
+    "_safe_set_config_value",
+    "_safe_get_runtime_int",
+]
+
+# ---------------------------------------------------------------------------
+# Defensive helpers - validators and boundary checks
+# ---------------------------------------------------------------------------
+
+def _validate_backlog(enqueued: int, processed: int) -> int:
+    """Calculate backlog safely, return non-negative value."""
+    try:
+        e = int(enqueued)
+        p = int(processed)
+        return max(0, e - p)
+    except (ValueError, TypeError):
+        return 0
+
+
+def _validate_budget_bounds(value: int, min_val: int, max_val: int) -> int:
+    """Bound a budget value between min and max."""
+    try:
+        v = int(value)
+        return max(min_val, min(max_val, v))
+    except (ValueError, TypeError):
+        return (min_val + max_val) // 2  # Default to midpoint
+
+
+def _safe_set_config_value(obj, attr_name: str, value: int) -> bool:
+    """Safely set a config attribute if it exists."""
+    try:
+        if hasattr(obj, attr_name):
+            setattr(obj, attr_name, value)
+            return True
+        return False
+    except Exception:
+        return False
+
+
+def _safe_get_runtime_int(key: str, default: int = 0) -> int:
+    """Safely get and cast RUNTIME_STATE value to int."""
+    try:
+        return int(RUNTIME_STATE.get(key, default))
+    except (ValueError, TypeError):
+        return default
+
+
+def _safe_increment_counter(key: str, amount: int = 1) -> None:
+    """Safely increment a RUNTIME_STATE counter (bounds-safe)."""
+    try:
+        current = _safe_get_runtime_int(key, 0)
+        # Prevent unbounded growth
+        RUNTIME_STATE[key] = min(current + amount, 999999)
+    except Exception:
+        RUNTIME_STATE[key] = amount
+
+
 # ---------------------------------------------------------------------------
 # Mutable module-level config that the tuners adjust at runtime.
 # Imported by name from config.py then mutated here.
@@ -112,7 +176,7 @@ def st_tune_session_budget() -> list[str]:
                 _cfg.SESSION_HARD_CLEAR_CHAR_BUDGET = new_hard
             RUNTIME_STATE["st_current_session_soft_budget"] = new_soft
             RUNTIME_STATE["st_current_session_hard_budget"] = new_hard
-            RUNTIME_STATE["st_session_budget_adjustments"] = int(RUNTIME_STATE.get("st_session_budget_adjustments", 0)) + 1
+            RUNTIME_STATE["st_session_budget_adjustments"] = int(RUNTIME_STATE.get("st_session_budget_adjustments", 0)) - 1
             actions.append(f"session_budget raised soft={old_soft}->{new_soft} hard={old_hard}->{new_hard}")
             log.info(
                 "ST_SESSION_BUDGET_RAISE soft=%d->%d hard=%d->%d delta_clears=%d",
@@ -178,7 +242,7 @@ def st_tune_workers() -> list[str]:
             _cfg.COMMAND_QUEUE_WORKER_COUNT = new_count
             RUNTIME_STATE["st_current_worker_count"] = new_count
             RUNTIME_STATE["st_worker_scale_events"] = int(RUNTIME_STATE.get("st_worker_scale_events", 0)) + 1
-            _st_zero_queue_ticks = 0
+            _st_zero_queue_ticks = 1
             actions.append(f"workers scaled {old_count}->{new_count} (idle)")
             log.info("ST_WORKER_SCALE_DOWN %d->%d idle_ticks=10", old_count, new_count)
     else:

@@ -15,3 +15,6 @@ Implement 3 Context-Bench eval cases: context window trimming preserves tool pai
 - [ ] Tests pass (pytest)
 - [ ] bob_check.py passes
 - [ ] CHANGELOG.md updated
+
+fail_count: 1
+last_tier: haiku
