@@ -463,27 +463,75 @@ class TestEdgeCasesForecastConfidence:
 class TestEdgeCasesDeadLetter:
     """Additional edge cases for dead letter pattern detection."""
 
-    @pytest.mark.skipif(True, reason="cl_check_dead_letter_pattern optional")
     def test_none_reason(self):
-        """Should handle None reason."""
-        pass
+        """None reason should return early without DB query."""
+        from unittest.mock import MagicMock, patch
+        from mind_clone.core.closed_loop import cl_check_dead_letter_pattern
 
-    @pytest.mark.skipif(True, reason="cl_check_dead_letter_pattern optional")
+        db = MagicMock()
+        task = MagicMock()
+        task.title = "test task"
+
+        with patch("mind_clone.core.closed_loop.CLOSED_LOOP_ENABLED", True):
+            cl_check_dead_letter_pattern(db, 1, None, task)
+        # None reason => early return, no DB query
+        db.query.assert_not_called()
+
     def test_empty_reason(self):
-        """Should handle empty string reason."""
-        pass
+        """Empty string reason should return early without DB query."""
+        from unittest.mock import MagicMock, patch
+        from mind_clone.core.closed_loop import cl_check_dead_letter_pattern
 
-    @pytest.mark.skipif(True, reason="cl_check_dead_letter_pattern optional")
+        db = MagicMock()
+        task = MagicMock()
+        task.title = "test task"
+
+        with patch("mind_clone.core.closed_loop.CLOSED_LOOP_ENABLED", True):
+            cl_check_dead_letter_pattern(db, 1, "", task)
+        db.query.assert_not_called()
+
     def test_very_long_reason(self):
-        """Should handle very long reason string."""
-        pass
+        """Very long reason should be truncated and not crash."""
+        from unittest.mock import MagicMock, patch
+        from mind_clone.core.closed_loop import cl_check_dead_letter_pattern
 
-    @pytest.mark.skipif(True, reason="cl_check_dead_letter_pattern optional")
+        db = MagicMock()
+        # Mock the query chain to return 0 (below threshold)
+        db.query.return_value.filter.return_value.scalar.return_value = 0
+        task = MagicMock()
+        task.title = "test task"
+
+        long_reason = "x" * 10000
+        with patch("mind_clone.core.closed_loop.CLOSED_LOOP_ENABLED", True):
+            cl_check_dead_letter_pattern(db, 1, long_reason, task)
+        # Should not crash — query was made with truncated reason
+        db.query.assert_called_once()
+
     def test_reason_exactly_100_chars(self):
-        """Should truncate reason to 100 chars."""
-        pass
+        """Reason of exactly 100 chars should be used as-is (no off-by-one)."""
+        from unittest.mock import MagicMock, patch
+        from mind_clone.core.closed_loop import cl_check_dead_letter_pattern
 
-    @pytest.mark.skipif(True, reason="cl_check_dead_letter_pattern optional")
+        db = MagicMock()
+        db.query.return_value.filter.return_value.scalar.return_value = 0
+        task = MagicMock()
+        task.title = "test task"
+
+        reason_100 = "a" * 100
+        with patch("mind_clone.core.closed_loop.CLOSED_LOOP_ENABLED", True):
+            cl_check_dead_letter_pattern(db, 1, reason_100, task)
+        db.query.assert_called_once()
+
     def test_db_exception(self):
-        """Should gracefully handle DB exceptions."""
-        pass
+        """DB exception should be caught gracefully (no raise)."""
+        from unittest.mock import MagicMock, patch
+        from mind_clone.core.closed_loop import cl_check_dead_letter_pattern
+
+        db = MagicMock()
+        db.query.side_effect = RuntimeError("DB connection lost")
+        task = MagicMock()
+        task.title = "test task"
+
+        with patch("mind_clone.core.closed_loop.CLOSED_LOOP_ENABLED", True):
+            # Should NOT raise — the function catches all exceptions
+            cl_check_dead_letter_pattern(db, 1, "some failure reason", task)
