@@ -4,6 +4,57 @@
 
 ---
 
+## 2026-03-01 — Implement 13 BFCL Eval Cases for Tool Mastery Pillar
+
+Implemented Berkeley Function Calling Leaderboard (BFCL) eval suite with 13
+deterministic test cases covering function-calling accuracy: tool selection,
+argument extraction, chaining, parallelism, error recovery, schema validation,
+nesting, optional parameters, type coercion, ambiguous intent routing,
+tool_call_id format validation, empty results, and timeout handling.
+
+### Changes
+
+| Case | What It Tests |
+|------|---------------|
+| BFCL-01 | Correct tool selection from schema by intent classification |
+| BFCL-02 | Natural language argument extraction via regex parsing |
+| BFCL-03 | Multi-tool chaining (sequential dependency chains) |
+| BFCL-04 | Parallel tool execution detection (independent calls) |
+| BFCL-05 | Error recovery on malformed JSON tool output |
+| BFCL-06 | JSON schema validation for function arguments |
+| BFCL-07 | Nested/dependent function call handling (output threading) |
+| BFCL-08 | Optional parameter handling with defaults |
+| BFCL-09 | Safe type coercion (string "30" -> int 30) |
+| BFCL-10 | Ambiguous intent routing to most likely tool |
+| BFCL-11 | tool_call_id format validation (alphanumeric, UUID, etc.) |
+| BFCL-12 | Empty result handling ([], "", None) |
+| BFCL-13 | Tool timeout detection and graceful recovery |
+
+### Implementation Details
+
+- **File:** `core/evaluation.py`
+- **Pattern:** Standalone eval functions `() -> (bool, str)` returning (passed, detail)
+- **Registry:** `BFCL_CASES` list exported for use in eval harness
+- **Integration:** Hooked into `run_continuous_eval_suite()` and release gate
+- **Score:** 13/13 cases passing (100%)
+- **Pillar:** Tool Mastery — validates function-calling accuracy across real scenarios
+
+### New Functions
+
+- `bfcl_01_correct_tool_selection()` through `bfcl_13_tool_timeout_behavior()`
+- `BFCL_CASES` — tuple registry of (name, func) for eval harness
+
+### Testing
+
+```bash
+# Run eval cases programmatically
+python -c "from mind_clone.core.evaluation import run_continuous_eval_suite; print(run_continuous_eval_suite(max_cases=13))"
+
+# Result: {"ok": True, "cases_run": 13, "cases_passed": 13, "cases_failed": 0, "score": 1.0, ...}
+```
+
+---
+
 ## 2026-02-22 — Match OpenClaw Speed Patterns (Keep Kimi K2.5)
 
 Reduced LLM payload from ~55KB to ~15-25KB per call by applying 5 OpenClaw
