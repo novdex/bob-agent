@@ -4,6 +4,32 @@
 
 ---
 
+## 2026-03-01 — Implement Agent Loop Infrastructure & Verify BFCL Eval Cases
+
+Implemented critical missing functions in agent reasoning loop to fix test import errors and ensure BFCL eval cases pass with proper test infrastructure:
+
+- **_sanitize_tool_pairs()**: Ensures tool_call ↔ tool_response pairs are correctly matched for Kimi K2.5 API compatibility. Handles orphaned calls/responses, injects reasoning_content, replaces empty content with placeholders.
+- **_classify_message_complexity()**: Classifies user messages as "simple"/"normal"/"complex" to control context injection limits (maps to t2-bench, GAIA benchmarks).
+- **_context_top_k()**: Returns context injection limits based on message complexity (lessons, artifacts, episodes, tools).
+- **build_system_prompt()**: Enhanced to include agent identity (UUID, origin statement, core values), model info, and create_tool directive.
+- **MAX_TOOL_LOOPS**: Raised from 30 to 50 to support complex multi-tool chains (5+ phase tasks).
+
+### Testing Results
+- **BFCL Eval Suite**: 13/13 passing (100% score) ✓
+- **Loop Tests**: 26/26 passing (sanitize, complexity, context, system prompt, constants) ✓
+- **Memory Tests**: 26/26 passing (conversation CRUD, summaries, context trimming, artifact retrieval) ✓
+- **Total Infrastructure Tests**: 52 passing
+
+### Pillar Impact
+- Tool Mastery: All 13 BFCL eval cases verified passing, ensuring function-calling accuracy across 13 scenarios
+- Communication: System prompt enhancements improve agent self-awareness and identity communication
+- Learning: Message complexity classification enables adaptive behavior (GAIA pillar)
+
+### Files Modified
+- `agent/loop.py` (178 insertions): Added 4 critical functions + enhancements to build_system_prompt()
+
+---
+
 ## 2026-03-01 — Implement 6 Vending-Bench Eval Cases for Autonomy Pillar
 
 Implemented 6 deterministic eval cases for Vending-Bench autonomy benchmark:
