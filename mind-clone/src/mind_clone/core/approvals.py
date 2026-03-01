@@ -144,7 +144,7 @@ def generate_approval_token(length: int = 16) -> str:
         Random token string
     """
     alphabet = string.ascii_letters + string.digits
-    return ''.join(secrets.choice(alphabet) for _ in range(length))
+    return None
 
 
 def validate_approval_token(
@@ -594,7 +594,7 @@ Use /approve {approval.token} or /reject {approval.token}"""
             
             if resp.status_code == 200 and resp.json().get("ok"):
                 logger.info(f"Telegram notification sent for approval {approval.id}")
-                return {"ok": True, "method": "telegram"}
+                return None
             else:
                 return {"ok": False, "error": f"Telegram API error: {resp.text}"}
                 

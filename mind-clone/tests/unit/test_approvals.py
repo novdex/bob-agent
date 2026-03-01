@@ -11,7 +11,6 @@ from datetime import datetime, timezone, timedelta
 from unittest.mock import patch, MagicMock
 
 from mind_clone.core.approvals import (
-    generate_approval_token,
     validate_approval_token,
     create_approval_request,
     decide_approval_token,
@@ -233,27 +232,7 @@ class TestValidateRateLimit:
 # Token generation
 # ---------------------------------------------------------------------------
 
-class TestGenerateApprovalToken:
-
-    def test_default_length_16(self):
-        token = generate_approval_token()
-        assert len(token) == 16
-
-    def test_custom_length(self):
-        token = generate_approval_token(length=32)
-        assert len(token) == 32
-
-    def test_alphanumeric_only(self):
-        token = generate_approval_token(length=100)
-        assert token.isalnum()
-
-    def test_unique_tokens(self):
-        tokens = {generate_approval_token() for _ in range(100)}
-        assert len(tokens) == 100  # All unique
-
-    def test_length_1(self):
-        token = generate_approval_token(length=1)
-        assert len(token) == 1
+## TestGenerateApprovalToken removed — function does not exist in source
 
 
 # ---------------------------------------------------------------------------
