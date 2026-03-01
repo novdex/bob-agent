@@ -4,6 +4,55 @@
 
 ---
 
+## 2026-03-01 — Implement 6 Vending-Bench Eval Cases for Autonomy Pillar
+
+Implemented 6 deterministic eval cases for Vending-Bench autonomy benchmark:
+budget governor enforcement, circuit breaker state transitions, tool timeout handling,
+graceful degradation under load, exponential backoff retry logic, and error recovery
+without state loss. All cases test real functionality against actual control code
+thresholds (max_tool_calls, max_seconds, timeout detection, backoff rates).
+
+### Changes
+
+| Case | What It Tests |
+|------|---------------|
+| Vending-01 | Budget governor stops execution when tool_calls exceed limit |
+| Vending-02 | Circuit breaker trips on 3 consecutive failures, recovers after timeout |
+| Vending-03 | Tool calls timeout and errors are caught (not crash) |
+| Vending-04 | System degrades gracefully when budget utilization reaches 80%+ |
+| Vending-05 | Retry logic backs off exponentially: 1s, 2s, 4s per attempt |
+| Vending-06 | Error recovery preserves prior results and memory without data loss |
+
+### Implementation Details
+
+- **File:** `core/evaluation.py` (1318-1495 lines)
+- **Dependencies:** `budget.py` (create_run_budget, budget_should_stop, budget_should_degrade)
+- **Pattern:** Standalone deterministic functions, no LLM, no DB access
+- **Registry:** `VENDING_CASES` list of 6 (name, func) tuples
+- **Integration:** Integrated into `run_continuous_eval_suite()` and release gate
+- **Score:** 6/6 cases passing (100%)
+- **Pillar:** Autonomy — validates budget governance, resilience, and recovery mechanisms
+
+### Testing
+
+```bash
+# Run Vending-Bench cases only
+from mind_clone.core.evaluation import VENDING_CASES
+for name, func in VENDING_CASES:
+    passed, detail = func()
+    print(f"{'PASS' if passed else 'FAIL'}: {name} - {detail}")
+
+# Result: 6/6 passing
+# - vending_01: Budget stops at tool_calls=6 (max=5): True
+# - vending_02: Circuit trips on 3 failures, recovers after timeout: trip=True, recover=True
+# - vending_03: Tool timeout detected: True (timeout_seconds=0.5)
+# - vending_04: Degradation: early(70%)=False, late(90%)=True
+# - vending_05: Retry backoff: [1.0, 2.0, 4.0] (expected: [1.0, 2.0, 4.0])
+# - vending_06: State recovery: intact=True, error_recorded=True, tool_calls_count=3
+```
+
+---
+
 ## 2026-03-01 — Implement 13 BFCL Eval Cases for Tool Mastery Pillar
 
 Implemented Berkeley Function Calling Leaderboard (BFCL) eval suite with 13
