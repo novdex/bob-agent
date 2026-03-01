@@ -106,6 +106,10 @@ from .github import (
     tool_git_push,
     tool_git_pull,
 )
+from .agent_team import (
+    tool_agent_team_run,
+    tool_agent_team_status,
+)
 
 logger = logging.getLogger("mind_clone.tools")
 
@@ -197,6 +201,9 @@ TOOL_DISPATCH: Dict[str, Callable[[dict], dict]] = {
     "git_log": tool_git_log,
     "git_push": tool_git_push,
     "git_pull": tool_git_pull,
+    # Agent team tools
+    "agent_team_run": tool_agent_team_run,
+    "agent_team_status": tool_agent_team_status,
 }
 
 # ---------------------------------------------------------------------------
@@ -261,6 +268,9 @@ TOOL_CATEGORIES: Dict[str, set] = {
         "list_plugin_tools", "create_tool", "list_custom_tools",
         "disable_custom_tool", "llm_structured_task",
     },
+    "agent_team": {
+        "agent_team_run", "agent_team_status",
+    },
 }
 
 # Intent keywords that map user messages to tool categories
@@ -277,6 +287,7 @@ _INTENT_KEYWORDS: Dict[str, List[str]] = {
     "nodes": ["node", "remote", "execution"],
     "sessions": ["session", "spawn", "terminal"],
     "custom": ["create tool", "custom tool", "build tool", "make tool", "new tool"],
+    "agent_team": ["agent team", "autonomous", "refactor", "modify code", "code change", "implement feature", "fix bug", "add feature"],
 }
 
 # Base categories always included for safety (file, code, memory)

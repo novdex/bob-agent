@@ -319,6 +319,42 @@ BROWSER_CLOSE_SCHEMA = {
     },
 }
 
+# Agent team tools
+AGENT_TEAM_RUN_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "agent_team_run",
+        "description": (
+            "Launch the autonomous agent team to modify the codebase. "
+            "Provide a task description and the team (Planner, Coder, Reviewer, Tester) "
+            "will create a branch, make changes, run tests, and merge if everything passes."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "task": {
+                    "type": "string",
+                    "description": "Description of the code change to make (max 2000 chars)",
+                },
+            },
+            "required": ["task"],
+        },
+    },
+}
+
+AGENT_TEAM_STATUS_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "agent_team_status",
+        "description": "Check the current status of the agent team — running, idle, or errored.",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+}
+
 # All tool schemas
 ALL_TOOL_SCHEMAS = [
     SEARCH_WEB_SCHEMA,
@@ -341,6 +377,8 @@ ALL_TOOL_SCHEMAS = [
     BROWSER_TYPE_SCHEMA,
     BROWSER_SCREENSHOT_SCHEMA,
     BROWSER_CLOSE_SCHEMA,
+    AGENT_TEAM_RUN_SCHEMA,
+    AGENT_TEAM_STATUS_SCHEMA,
 ]
 
 

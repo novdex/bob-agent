@@ -14,6 +14,7 @@ from .ops import router as ops_router
 from .ui import router as ui_router
 from .telegram import router as telegram_router
 from .workflow import router as workflow_router
+from .agent_team import router as agent_team_router
 
 # Re-export lifespan so factory or other entry-points can use it
 from ._shared import app_lifespan  # noqa: F401
@@ -27,3 +28,4 @@ router.include_router(ops_router)
 router.include_router(ui_router)
 router.include_router(telegram_router)
 router.include_router(workflow_router)
+router.include_router(agent_team_router)
