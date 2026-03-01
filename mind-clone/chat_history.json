@@ -1,0 +1,34 @@
+[
+  {
+    "id": 1,
+    "from": "Alice",
+    "to": "Bob",
+    "message": "Hey Bob! How are you doing?",
+    "timestamp": "2026-02-27 17:38:03",
+    "read": true
+  },
+  {
+    "id": 2,
+    "from": "Bob",
+    "to": "Alice",
+    "message": "Hey Alice! I'm doing great, thanks! How about you?",
+    "timestamp": "2026-02-27 17:38:03",
+    "read": true
+  },
+  {
+    "id": 3,
+    "from": "Alice",
+    "to": "Bob",
+    "message": "I'm good too! Want to meet up later?",
+    "timestamp": "2026-02-27 17:38:03",
+    "read": true
+  },
+  {
+    "id": 4,
+    "from": "Bob",
+    "to": "Alice",
+    "message": "Sure! How about 5 PM at the coffee shop?",
+    "timestamp": "2026-02-27 17:38:03",
+    "read": false
+  }
+]

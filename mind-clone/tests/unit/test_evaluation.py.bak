@@ -1,0 +1,207 @@
+"""
+Tests for continuous evaluation suite and release gate (maps to all benchmarks).
+
+Covers: eval case execution, benchmark scoring, release gate logic,
+        individual benchmark results, failure tracking.
+"""
+
+import pytest
+from unittest.mock import patch
+
+from mind_clone.core.evaluation import (
+    run_continuous_eval_suite,
+    evaluate_release_gate,
+    get_eval_cases,
+    EvalCase,
+)
+
+
+# ---------------------------------------------------------------------------
+# EvalCase registry
+# ---------------------------------------------------------------------------
+
+class TestEvalCaseRegistry:
+
+    def test_cases_are_not_empty(self):
+        cases = get_eval_cases()
+        assert len(cases) >= 30, f"Expected >= 30 eval cases, got {len(cases)}"
+
+    def test_all_cases_have_runner(self):
+        for case in get_eval_cases():
+            assert callable(case.runner), f"Case {case.id} runner not callable"
+
+    def test_all_case_ids_unique(self):
+        cases = get_eval_cases()
+        ids = [c.id for c in cases]
+        assert len(ids) == len(set(ids)), f"Duplicate IDs: {[i for i in ids if ids.count(i) > 1]}"
+
+    def test_benchmarks_covered(self):
+        """All 7 target benchmarks have at least 1 eval case."""
+        benchmarks = {c.benchmark for c in get_eval_cases()}
+        for bm in ("bfcl", "gaia", "fortress", "vending-bench", "context-bench", "t2-bench", "terminal-bench"):
+            assert bm in benchmarks, f"Benchmark '{bm}' has no eval cases"
+
+    def test_bfcl_has_10_plus_cases(self):
+        bfcl = [c for c in get_eval_cases() if c.benchmark == "bfcl"]
+        assert len(bfcl) >= 10, f"BFCL has {len(bfcl)} cases, expected >= 10"
+
+    def test_fortress_has_8_plus_cases(self):
+        fortress = [c for c in get_eval_cases() if c.benchmark == "fortress"]
+        assert len(fortress) >= 8, f"FORTRESS has {len(fortress)} cases, expected >= 8"
+
+
+# ---------------------------------------------------------------------------
+# run_continuous_eval_suite
+# ---------------------------------------------------------------------------
+
+class TestContinuousEvalSuite:
+
+    def test_returns_expected_keys(self):
+        result = run_continuous_eval_suite()
+        assert "ok" in result
+        assert "cases_run" in result
+        assert "cases_passed" in result
+        assert "cases_failed" in result
+        assert "score" in result
+        assert "timestamp" in result
+
+    def test_cases_run_is_positive(self):
+        result = run_continuous_eval_suite()
+        assert result["cases_run"] > 0, "No eval cases ran"
+
+    def test_all_cases_pass(self):
+        """Every eval case should pass — this is the key regression test."""
+        result = run_continuous_eval_suite()
+        if result["cases_failed"] > 0:
+            failures = result.get("failures", [])
+            fail_details = "\n".join(
+                f"  {f['id']} ({f['benchmark']}): {f['detail']}"
+                for f in failures
+            )
+            pytest.fail(
+                f"{result['cases_failed']} eval cases failed:\n{fail_details}"
+            )
+
+    def test_score_is_1_when_all_pass(self):
+        result = run_continuous_eval_suite()
+        if result["cases_failed"] == 0:
+            assert result["score"] == 1.0
+
+    def test_ok_is_true(self):
+        result = run_continuous_eval_suite()
+        assert result["ok"] is True
+
+    def test_max_cases_parameter_limits(self):
+        result = run_continuous_eval_suite(max_cases=5)
+        assert result["cases_run"] == 5
+
+    def test_timestamp_present(self):
+        result = run_continuous_eval_suite()
+        assert result["timestamp"] is not None
+        assert len(result["timestamp"]) > 0
+
+    def test_benchmarks_breakdown_present(self):
+        result = run_continuous_eval_suite()
+        assert "benchmarks" in result
+        assert isinstance(result["benchmarks"], dict)
+        assert len(result["benchmarks"]) >= 5
+
+    def test_benchmark_totals_match(self):
+        result = run_continuous_eval_suite()
+        bm_passed = sum(b["passed"] for b in result["benchmarks"].values())
+        bm_failed = sum(b["failed"] for b in result["benchmarks"].values())
+        assert bm_passed == result["cases_passed"]
+        assert bm_failed == result["cases_failed"]
+
+
+# ---------------------------------------------------------------------------
+# Individual benchmark suites
+# ---------------------------------------------------------------------------
+
+class TestBFCLBenchmark:
+
+    def test_all_bfcl_cases_pass(self):
+        result = run_continuous_eval_suite()
+        bfcl = result["benchmarks"].get("bfcl", {})
+        assert bfcl.get("failed", 0) == 0, f"BFCL failures: {bfcl}"
+
+
+class TestGAIABenchmark:
+
+    def test_all_gaia_cases_pass(self):
+        result = run_continuous_eval_suite()
+        gaia = result["benchmarks"].get("gaia", {})
+        assert gaia.get("failed", 0) == 0, f"GAIA failures: {gaia}"
+
+
+class TestFORTRESSBenchmark:
+
+    def test_all_fortress_cases_pass(self):
+        result = run_continuous_eval_suite()
+        fortress = result["benchmarks"].get("fortress", {})
+        assert fortress.get("failed", 0) == 0, f"FORTRESS failures: {fortress}"
+
+
+class TestVendingBenchmark:
+
+    def test_all_vending_cases_pass(self):
+        result = run_continuous_eval_suite()
+        vending = result["benchmarks"].get("vending-bench", {})
+        assert vending.get("failed", 0) == 0, f"Vending-Bench failures: {vending}"
+
+
+class TestContextBenchmark:
+
+    def test_all_context_cases_pass(self):
+        result = run_continuous_eval_suite()
+        context = result["benchmarks"].get("context-bench", {})
+        assert context.get("failed", 0) == 0, f"Context-Bench failures: {context}"
+
+
+class TestT2Benchmark:
+
+    def test_all_t2_cases_pass(self):
+        result = run_continuous_eval_suite()
+        t2 = result["benchmarks"].get("t2-bench", {})
+        assert t2.get("failed", 0) == 0, f"t2-bench failures: {t2}"
+
+
+class TestTerminalBenchmark:
+
+    def test_all_terminal_cases_pass(self):
+        result = run_continuous_eval_suite()
+        terminal = result["benchmarks"].get("terminal-bench", {})
+        assert terminal.get("failed", 0) == 0, f"Terminal-Bench failures: {terminal}"
+
+
+# ---------------------------------------------------------------------------
+# evaluate_release_gate
+# ---------------------------------------------------------------------------
+
+class TestReleaseGate:
+
+    def test_no_eval_passes_by_default(self):
+        result = evaluate_release_gate(run_eval=False)
+        assert result["passed"] is True
+        assert result["eval_result"] == {}
+
+    def test_with_eval_passes_when_all_pass(self):
+        """All cases pass → release gate passes."""
+        result = evaluate_release_gate(run_eval=True)
+        assert result["passed"] is True
+
+    def test_returns_expected_keys(self):
+        result = evaluate_release_gate()
+        assert "ok" in result
+        assert "passed" in result
+        assert "eval_result" in result
+        assert "timestamp" in result
+
+    def test_ok_always_true(self):
+        result = evaluate_release_gate(run_eval=True)
+        assert result["ok"] is True
+
+    def test_max_cases_passed_through(self):
+        result = evaluate_release_gate(run_eval=True, max_cases=5)
+        assert result["passed"] is True
+        assert result["eval_result"]["cases_run"] == 5
