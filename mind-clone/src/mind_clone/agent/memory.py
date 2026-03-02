@@ -42,7 +42,7 @@ def get_conversation_history(
     for row in rows:
         msg = {
             "role": row.role,
-            "content": row.text_preview or "",
+            "content": row.content,
         }
         if row.tool_call_id:
             msg["tool_call_id"] = row.tool_call_id
