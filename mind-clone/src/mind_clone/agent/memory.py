@@ -42,7 +42,7 @@ def get_conversation_history(
     for row in rows:
         msg = {
             "role": row.role,
-            "content": row.content,
+            "content": row.text_preview or "",
         }
         if row.tool_call_id:
             msg["tool_call_id"] = row.tool_call_id
@@ -207,18 +207,20 @@ def store_lesson(
     lesson: str,
     context: str = "",
 ) -> bool:
-    """Store a lesson as a MemoryVector entry."""
+    """Store a lesson as a MemoryVector entry with real GloVe embedding."""
     from ..database.models import MemoryVector
+    from .vectors import get_embedding, embedding_to_bytes
 
     text = truncate_text(str(lesson or "").strip(), 800)
     if not text:
         return False
     try:
+        vec = get_embedding(text)
         row = MemoryVector(
             owner_id=owner_id,
             memory_type="lesson",
             text_preview=text,
-            embedding=b"\x00",  # placeholder — real embeddings added by reindex
+            embedding=embedding_to_bytes(vec),
         )
         db.add(row)
         db.commit()
@@ -230,14 +232,37 @@ def store_lesson(
 
 
 def reindex_owner_memory_vectors(owner_id: int, rebuild_lessons: bool = False) -> dict:
-    """Re-index memory vectors for an owner (placeholder — no vector engine yet)."""
+    """Re-index memory vectors for an owner using GloVe embeddings."""
     from ..database.session import SessionLocal as _SL
     from ..database.models import MemoryVector
+    from .vectors import get_embedding, embedding_to_bytes, GLOVE_DIM
+    import numpy as np
 
     db = _SL()
     try:
-        count = db.query(MemoryVector).filter(MemoryVector.owner_id == owner_id).count()
-        return {"ok": True, "owner_id": owner_id, "vectors": count, "reindexed": 0}
+        rows = db.query(MemoryVector).filter(MemoryVector.owner_id == owner_id).all()
+        reindexed = 0
+        null_placeholder = b"\x00"
+        expected_bytes = GLOVE_DIM * 4  # float32
+
+        for row in rows:
+            needs_reindex = (
+                rebuild_lessons
+                or row.embedding == null_placeholder
+                or len(row.embedding) != expected_bytes
+            )
+            if needs_reindex and row.text_preview:
+                vec = get_embedding(row.text_preview)
+                row.embedding = embedding_to_bytes(vec)
+                reindexed += 1
+
+        if reindexed > 0:
+            db.commit()
+        return {"ok": True, "owner_id": owner_id, "vectors": len(rows), "reindexed": reindexed}
+    except Exception as exc:
+        logger.warning("reindex_owner_memory_vectors failed owner=%d: %s", owner_id, exc)
+        db.rollback()
+        return {"ok": False, "owner_id": owner_id, "vectors": 0, "reindexed": 0, "error": str(exc)}
     finally:
         db.close()
 
@@ -347,12 +372,12 @@ def search_memory_vectors(
         query_vec = np.array(query_embedding, dtype=np.float32)
         q = db.query(MemoryVector).filter(MemoryVector.owner_id == owner_id)
         if category:
-            q = q.filter(MemoryVector.category == category)
+            q = q.filter(MemoryVector.memory_type == category)
         rows = q.all()
 
         scored: list[tuple[float, MemoryVector]] = []
         for row in rows:
-            if row.embedding:
+            if row.embedding and len(row.embedding) > 1:
                 vec = np.frombuffer(row.embedding, dtype=np.float32)
                 if vec.shape == query_vec.shape:
                     dot = float(np.dot(query_vec, vec))
@@ -364,8 +389,8 @@ def search_memory_vectors(
         return [
             {
                 "id": row.id,
-                "content": row.content,
-                "category": row.category,
+                "content": row.text_preview or "",
+                "category": row.memory_type,
                 "similarity": round(sim, 4),
             }
             for sim, row in scored[:top_k]
@@ -373,6 +398,96 @@ def search_memory_vectors(
     except Exception as exc:
         logger.warning("search_memory_vectors failed: %s", str(exc)[:200])
         return []
+
+
+def retrieve_relevant_lessons(
+    db: Session,
+    owner_id: int,
+    query: str,
+    top_k: int = 5,
+) -> List[str]:
+    """Retrieve lessons relevant to query via GloVe cosine similarity.
+
+    Returns list of lesson text strings for context injection.
+    """
+    results = search_memory_vectors(db, owner_id, query, top_k=top_k, category="lesson")
+    return [r["content"] for r in results if r.get("content")]
+
+
+def retrieve_relevant_episodes(
+    db: Session,
+    owner_id: int,
+    query: str,
+    top_k: int = 5,
+) -> List[str]:
+    """Retrieve episodic memories relevant to query via GloVe cosine similarity.
+
+    Searches the EpisodicMemory table by embedding the situation field
+    and comparing against the query embedding.
+    """
+    from .vectors import get_embedding, cosine_similarity as cos_sim
+    from ..database.models import EpisodicMemory
+
+    if not query or not query.strip():
+        return []
+
+    try:
+        query_vec = get_embedding(query)
+        rows = (
+            db.query(EpisodicMemory)
+            .filter(EpisodicMemory.owner_id == owner_id)
+            .order_by(EpisodicMemory.id.desc())
+            .limit(200)
+            .all()
+        )
+
+        scored: list[tuple[float, EpisodicMemory]] = []
+        for row in rows:
+            if row.situation:
+                sit_vec = get_embedding(row.situation)
+                sim = cos_sim(query_vec, sit_vec)
+                scored.append((sim, row))
+
+        scored.sort(key=lambda x: -x[0])
+        results = []
+        for sim, row in scored[:top_k]:
+            outcome = row.outcome or "unknown"
+            detail = f" ({row.outcome_detail})" if row.outcome_detail else ""
+            results.append(
+                f"[{outcome}{detail}] {row.situation} -> {row.action_taken}"
+            )
+        return results
+    except Exception as exc:
+        logger.warning("retrieve_relevant_episodes failed: %s", str(exc)[:200])
+        return []
+
+
+def retrieve_improvement_notes(
+    db: Session,
+    owner_id: int,
+    query: str,
+    top_k: int = 5,
+) -> List[str]:
+    """Retrieve improvement notes relevant to query via GloVe similarity.
+
+    Improvement notes are stored as MemoryVector with memory_type='note'.
+    """
+    results = search_memory_vectors(db, owner_id, query, top_k=top_k, category="note")
+    return [r["content"] for r in results if r.get("content")]
+
+
+def retrieve_world_model(
+    db: Session,
+    owner_id: int,
+    query: str,
+    top_k: int = 5,
+) -> List[str]:
+    """Retrieve world model entries relevant to query via GloVe similarity.
+
+    World model entries are stored as MemoryVector with memory_type='world'.
+    """
+    results = search_memory_vectors(db, owner_id, query, top_k=top_k, category="world")
+    return [r["content"] for r in results if r.get("content")]
 
 
 def retrieve_relevant_artifacts(

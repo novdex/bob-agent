@@ -238,7 +238,7 @@ BROWSER_OPEN_SCHEMA = {
     "type": "function",
     "function": {
         "name": "browser_open",
-        "description": "Open a URL in browser",
+        "description": "Open a URL in a headless Chromium browser session. Returns page title and a structural snapshot of the DOM.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -316,7 +316,7 @@ BROWSER_EXECUTE_JS_SCHEMA = {
         "parameters": {
             "type": "object",
             "properties": {
-                "code": {"type": "string", "description": "JavaScript code to execute (e.g. 'document.title' or '() => document.querySelectorAll(\\"a\\").length')"},
+                "code": {"type": "string", "description": "JavaScript code to execute in the browser page. Supports any valid JS expression. The result of the last expression is returned. Requires browser_open first."},
             },
             "required": ["code"],
         },

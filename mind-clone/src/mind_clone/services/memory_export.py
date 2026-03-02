@@ -95,8 +95,7 @@ def build_memory_export_payload(
         )
         for lsn in lessons:
             lessons_data.append({
-                "lesson": str(lsn.text_content or ""),
-                "context": str(lsn.context_ref or ""),
+                "lesson": str(lsn.text_preview or ""),
             })
     except Exception:
         pass  # MemoryVector may not exist in all DB schemas
