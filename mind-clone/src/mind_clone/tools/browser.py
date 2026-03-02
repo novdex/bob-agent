@@ -1,114 +1,62 @@
 """
-Browser Automation Tools (Pillar 5)
+Browser Automation Tools (Pillar 5) — Playwright backend.
 
-Selenium-based browser automation for web scraping, form filling,
-and JavaScript execution.
+Session-based browser control: open a page, interact across multiple tool
+calls (type, click, read, screenshot, JS), then close.  Each owner_id gets
+one persistent browser context that auto-closes after idle timeout.
+
+Requires: pip install playwright && python -m playwright install chromium
 """
 
 from __future__ import annotations
 
+import base64
 import logging
+import pathlib
 import threading
 import time
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from selenium.webdriver.remote.webdriver import WebDriver
+from typing import Any, Dict, Optional, Tuple
 
 logger = logging.getLogger("mind_clone.browser")
 
-# Configuration (will be imported from settings)
+# ── Configuration ───────────────────────────────────────────────────────
 BROWSER_TOOL_ENABLED = True
-BROWSER_HEADLESS_DEFAULT = False
-BROWSER_SESSION_TIMEOUT_SECONDS = 300
+BROWSER_SESSION_TIMEOUT_SECONDS = 300  # auto-close after 5 min idle
 TOOL_CHAINING_HINTS_ENABLED = True
 ENVIRONMENT_STATE_ENABLED = True
 ENVIRONMENT_STATE_TTL_SECONDS = 60
 
-# Global state
-_browser_sessions: dict[int, dict] = {}  # owner_id -> {"driver": WebDriver, "last_used": float}
-_browser_lock = threading.Lock()
+# ── Global state ────────────────────────────────────────────────────────
+# owner_id -> {"pw", "browser", "page", "last_used"}
+_sessions: Dict[int, Dict[str, Any]] = {}
+_lock = threading.Lock()
 
 
-def _get_or_create_browser(owner_id: int, headless: bool | None = None) -> "WebDriver | None":
-    """Get or create a browser session for an owner."""
-    if not BROWSER_TOOL_ENABLED:
-        return None
-    
-    try:
-        from selenium import webdriver
-        from selenium.webdriver.chrome.options import Options as ChromeOptions
-    except ImportError:
-        logger.warning("SELENIUM_NOT_AVAILABLE")
-        return None
-    
-    with _browser_lock:
-        session = _browser_sessions.get(owner_id)
-        if session:
-            session["last_used"] = time.monotonic()
-            try:
-                session["driver"].title  # health check
-                return session["driver"]
-            except Exception:
-                try:
-                    session["driver"].quit()
-                except Exception:
-                    pass
-                _browser_sessions.pop(owner_id, None)
-        
-        # Create new session
-        try:
-            opts = ChromeOptions()
-            if headless if headless is not None else BROWSER_HEADLESS_DEFAULT:
-                opts.add_argument("--headless=new")
-            opts.add_argument("--no-sandbox")
-            opts.add_argument("--disable-dev-shm-usage")
-            opts.add_argument("--disable-gpu")
-            driver = webdriver.Chrome(options=opts)
-            driver.set_page_load_timeout(30)
-            _browser_sessions[owner_id] = {"driver": driver, "last_used": time.monotonic()}
-            return driver
-        except Exception as e:
-            logger.warning("BROWSER_CREATE_FAIL owner=%s error=%s", owner_id, str(e)[:200])
-            return None
-
-
-def _cleanup_browser_sessions():
-    """Close browser sessions that have been idle too long."""
-    now = time.monotonic()
-    with _browser_lock:
-        for oid in list(_browser_sessions.keys()):
-            s = _browser_sessions[oid]
-            if (now - s["last_used"]) > BROWSER_SESSION_TIMEOUT_SECONDS:
-                try:
-                    s["driver"].quit()
-                except Exception:
-                    pass
-                _browser_sessions.pop(oid, None)
-
-
+# ── Semantic snapshot JS (extracts structured page metadata) ────────────
 _SEMANTIC_SNAPSHOT_JS = """
-(function() {
-    var snap = {headings: [], links: [], forms: [], buttons: [],
-                meta_description: "", lang: ""};
-    document.querySelectorAll("h1,h2,h3").forEach(function(h, i) {
+() => {
+    const snap = {headings: [], links: [], forms: [], buttons: [],
+                  meta_description: "", lang: "", url: location.href,
+                  title: document.title};
+    document.querySelectorAll("h1,h2,h3").forEach((h, i) => {
         if (i < 20 && h.textContent.trim())
             snap.headings.push({level: h.tagName.toLowerCase(),
                                 text: h.textContent.trim().slice(0, 120)});
     });
-    document.querySelectorAll("a[href]").forEach(function(a, i) {
+    document.querySelectorAll("a[href]").forEach((a, i) => {
         if (i < 30 && a.textContent.trim())
             snap.links.push({text: a.textContent.trim().slice(0, 80),
                              href: a.href.slice(0, 200)});
     });
-    document.querySelectorAll("form").forEach(function(f, i) {
+    document.querySelectorAll("form").forEach((f, i) => {
         if (i < 5) {
-            var inputs = [];
-            f.querySelectorAll("input,textarea,select").forEach(function(inp, j) {
+            const inputs = [];
+            f.querySelectorAll("input,textarea,select").forEach((inp, j) => {
                 if (j < 10)
                     inputs.push({tag: inp.tagName.toLowerCase(),
                                  type: inp.type || "text",
-                                 name: inp.name || ""});
+                                 name: inp.name || "",
+                                 placeholder: inp.placeholder || ""});
             });
             snap.forms.push({action: (f.action || "").slice(0, 200),
                              method: (f.method || "GET").toUpperCase(),
@@ -116,129 +64,286 @@ _SEMANTIC_SNAPSHOT_JS = """
         }
     });
     document.querySelectorAll("button, input[type=submit], input[type=button]")
-        .forEach(function(b, i) {
+        .forEach((b, i) => {
             if (i < 15) {
-                var txt = (b.textContent || b.value || "").trim().slice(0, 60);
+                const txt = (b.textContent || b.value || "").trim().slice(0, 60);
                 if (txt) snap.buttons.push(txt);
             }
         });
-    var meta = document.querySelector("meta[name=description]");
+    const meta = document.querySelector("meta[name=description]");
     if (meta) snap.meta_description = (meta.content || "").slice(0, 300);
     snap.lang = (document.documentElement.lang || "").slice(0, 10);
     return snap;
-})();
+}
 """
 
 
-def _capture_semantic_snapshot(driver) -> dict:
-    """Extract structured page metadata from a Selenium WebDriver session."""
+# ═══════════════════════════════════════════════════════════════════════
+# Session management
+# ═══════════════════════════════════════════════════════════════════════
+
+def _get_session(owner_id: int) -> Optional[Dict[str, Any]]:
+    """Return existing session if alive, else None."""
+    with _lock:
+        s = _sessions.get(owner_id)
+        if not s:
+            return None
+        try:
+            # Health check — if browser crashed this throws
+            s["page"].url  # noqa: B018
+            s["last_used"] = time.monotonic()
+            return s
+        except Exception:
+            _destroy_session_unlocked(owner_id)
+            return None
+
+
+def _create_session(owner_id: int) -> Dict[str, Any]:
+    """Launch Playwright + Chromium and store session."""
+    from playwright.sync_api import sync_playwright
+
+    pw = sync_playwright().start()
+    browser = pw.chromium.launch(
+        headless=True,
+        args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
+    )
+    context = browser.new_context(
+        viewport={"width": 1280, "height": 720},
+        user_agent=(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        ),
+    )
+    page = context.new_page()
+    page.set_default_timeout(15_000)
+
+    session = {
+        "pw": pw,
+        "browser": browser,
+        "context": context,
+        "page": page,
+        "last_used": time.monotonic(),
+    }
+    with _lock:
+        # Close any existing session for this owner
+        _destroy_session_unlocked(owner_id)
+        _sessions[owner_id] = session
+    logger.info("Browser session created for owner=%s", owner_id)
+    return session
+
+
+def _get_or_create_session(owner_id: int) -> Tuple[Dict[str, Any], Optional[str]]:
+    """Return (session, error). error is None on success."""
+    if not BROWSER_TOOL_ENABLED:
+        return {}, "Browser tools are disabled"
+
+    s = _get_session(owner_id)
+    if s:
+        return s, None
+
     try:
-        return driver.execute_script(_SEMANTIC_SNAPSHOT_JS) or {}
+        return _create_session(owner_id), None
+    except ImportError:
+        return {}, "Playwright not installed (pip install playwright && python -m playwright install chromium)"
+    except Exception as e:
+        return {}, f"Browser launch failed: {str(e)[:200]}"
+
+
+def _require_session(owner_id: int) -> Tuple[Optional[Dict[str, Any]], Optional[dict]]:
+    """Get existing session or return error dict. Does NOT auto-create."""
+    s = _get_session(owner_id)
+    if s:
+        return s, None
+    return None, {"ok": False, "error": "No browser session. Call browser_open first."}
+
+
+def _destroy_session_unlocked(owner_id: int):
+    """Close and remove session. Must hold _lock."""
+    s = _sessions.pop(owner_id, None)
+    if not s:
+        return
+    for key in ("page", "context", "browser"):
+        try:
+            s[key].close()
+        except Exception:
+            pass
+    try:
+        s["pw"].stop()
+    except Exception:
+        pass
+
+
+def cleanup_idle_sessions():
+    """Close sessions idle beyond timeout. Called by heartbeat."""
+    now = time.monotonic()
+    with _lock:
+        for oid in list(_sessions.keys()):
+            if (now - _sessions[oid]["last_used"]) > BROWSER_SESSION_TIMEOUT_SECONDS:
+                logger.info("Closing idle browser session for owner=%s", oid)
+                _destroy_session_unlocked(oid)
+
+
+def _snapshot(page) -> dict:
+    """Capture semantic snapshot from current page."""
+    try:
+        return page.evaluate(_SEMANTIC_SNAPSHOT_JS) or {}
     except Exception:
         return {}
 
 
+# ═══════════════════════════════════════════════════════════════════════
+# Tool implementations
+# ═══════════════════════════════════════════════════════════════════════
+
 def tool_browser_open(args: dict) -> dict:
-    """Open a URL in the browser and return a semantic snapshot."""
+    """Open a URL in the browser. Creates session if needed."""
     owner_id = int(args.get("_owner_id", 1))
     url = str(args.get("url", "")).strip()
     if not url:
-        return {"ok": False, "error": "URL required"}
+        return {"ok": False, "error": "url is required"}
 
-    from ..core.security import apply_url_safety_guard
-    safe_ok, safe_reason = apply_url_safety_guard(url, source="browser_open")
-    if not safe_ok:
-        return {"ok": False, "error": safe_reason, "url": url}
-
-    driver = _get_or_create_browser(owner_id, headless=args.get("headless"))
-    if not driver:
-        return {"ok": False, "error": "Browser not available (Selenium/Chrome not installed)"}
-
+    # URL safety check
     try:
-        driver.get(url)
-        result = {"ok": True, "title": driver.title, "url": driver.current_url}
-        snapshot = _capture_semantic_snapshot(driver)
-        if snapshot:
-            result["snapshot"] = snapshot
+        from ..core.security import apply_url_safety_guard
+        safe_ok, safe_reason = apply_url_safety_guard(url, source="browser_open")
+        if not safe_ok:
+            return {"ok": False, "error": safe_reason}
+    except Exception:
+        pass  # Security module optional
+
+    session, err = _get_or_create_session(owner_id)
+    if err:
+        return {"ok": False, "error": err}
+
+    page = session["page"]
+    try:
+        page.goto(url, wait_until="domcontentloaded", timeout=30_000)
+        result = {
+            "ok": True,
+            "title": page.title(),
+            "url": page.url,
+        }
+        snap = _snapshot(page)
+        if snap:
+            result["snapshot"] = snap
+        # Include visible text summary
+        try:
+            body_text = page.inner_text("body")
+            result["text"] = body_text[:4000]
+        except Exception:
+            pass
         return result
     except Exception as e:
-        return {"ok": False, "error": str(e)[:300]}
+        return {"ok": False, "error": f"Failed to open {url}: {str(e)[:200]}"}
 
 
 def tool_browser_get_text(args: dict) -> dict:
-    """Get text content from a page element."""
+    """Get text content from the current page or a specific element."""
     owner_id = int(args.get("_owner_id", 1))
     selector = str(args.get("selector", "body")).strip()
-    
-    session = _browser_sessions.get(owner_id)
-    if not session:
-        return {"ok": False, "error": "No browser session. Call browser_open first."}
-    
+
+    session, err = _require_session(owner_id)
+    if err:
+        return err
+
+    page = session["page"]
     try:
-        from selenium.webdriver.common.by import By
-        session["last_used"] = time.monotonic()
-        el = session["driver"].find_element(By.CSS_SELECTOR, selector)
-        text = el.text[:5000]
-        return {"ok": True, "text": text}
+        if selector == "body":
+            text = page.inner_text("body")
+        else:
+            el = page.query_selector(selector)
+            if not el:
+                return {"ok": False, "error": f"Element not found: {selector}"}
+            text = el.inner_text()
+        return {"ok": True, "text": text[:5000], "selector": selector, "url": page.url}
     except Exception as e:
         return {"ok": False, "error": str(e)[:300]}
 
 
 def tool_browser_click(args: dict) -> dict:
-    """Click an element on the page."""
+    """Click an element on the current page."""
     owner_id = int(args.get("_owner_id", 1))
     selector = str(args.get("selector", "")).strip()
     if not selector:
-        return {"ok": False, "error": "selector required"}
-    
-    session = _browser_sessions.get(owner_id)
-    if not session:
-        return {"ok": False, "error": "No browser session. Call browser_open first."}
-    
+        return {"ok": False, "error": "selector is required"}
+
+    session, err = _require_session(owner_id)
+    if err:
+        return err
+
+    page = session["page"]
     try:
-        from selenium.webdriver.common.by import By
-        session["last_used"] = time.monotonic()
-        el = session["driver"].find_element(By.CSS_SELECTOR, selector)
-        el.click()
-        return {"ok": True, "clicked": selector}
+        page.click(selector, timeout=10_000)
+        page.wait_for_timeout(1000)
+        result = {
+            "ok": True,
+            "clicked": selector,
+            "url": page.url,
+            "title": page.title(),
+        }
+        snap = _snapshot(page)
+        if snap:
+            result["snapshot"] = snap
+        return result
     except Exception as e:
-        return {"ok": False, "error": str(e)[:300]}
+        return {"ok": False, "error": f"Click failed on '{selector}': {str(e)[:200]}"}
 
 
 def tool_browser_type(args: dict) -> dict:
-    """Type text into an input element."""
+    """Type text into an input field on the current page."""
     owner_id = int(args.get("_owner_id", 1))
     selector = str(args.get("selector", "")).strip()
     text = str(args.get("text", ""))
     if not selector:
-        return {"ok": False, "error": "selector required"}
-    
-    session = _browser_sessions.get(owner_id)
-    if not session:
-        return {"ok": False, "error": "No browser session. Call browser_open first."}
-    
+        return {"ok": False, "error": "selector is required"}
+
+    session, err = _require_session(owner_id)
+    if err:
+        return err
+
+    page = session["page"]
     try:
-        from selenium.webdriver.common.by import By
-        session["last_used"] = time.monotonic()
-        el = session["driver"].find_element(By.CSS_SELECTOR, selector)
-        el.clear()
-        el.send_keys(text)
-        return {"ok": True, "typed_into": selector}
+        page.fill(selector, text, timeout=10_000)
+        if args.get("submit"):
+            page.press(selector, "Enter")
+            page.wait_for_timeout(1500)
+        return {
+            "ok": True,
+            "typed": text,
+            "selector": selector,
+            "url": page.url,
+        }
     except Exception as e:
-        return {"ok": False, "error": str(e)[:300]}
+        return {"ok": False, "error": f"Type failed on '{selector}': {str(e)[:200]}"}
 
 
 def tool_browser_screenshot(args: dict) -> dict:
     """Take a screenshot of the current page."""
     owner_id = int(args.get("_owner_id", 1))
-    session = _browser_sessions.get(owner_id)
-    if not session:
-        return {"ok": False, "error": "No browser session. Call browser_open first."}
-    
+
+    session, err = _require_session(owner_id)
+    if err:
+        return err
+
+    page = session["page"]
     try:
-        session["last_used"] = time.monotonic()
-        png = session["driver"].get_screenshot_as_base64()
-        return {"ok": True, "screenshot_base64": png[:50000]}  # limit size
+        full_page = bool(args.get("full_page", False))
+        png_bytes = page.screenshot(full_page=full_page)
+
+        out_dir = pathlib.Path("persist/screenshots")
+        out_dir.mkdir(parents=True, exist_ok=True)
+        filename = f"shot_{int(time.time() * 1000)}.png"
+        path = out_dir / filename
+        path.write_bytes(png_bytes)
+
+        b64 = base64.b64encode(png_bytes).decode("ascii")
+        return {
+            "ok": True,
+            "path": str(path),
+            "url": page.url,
+            "title": page.title(),
+            "screenshot_base64": b64[:50000],
+        }
     except Exception as e:
         return {"ok": False, "error": str(e)[:300]}
 
@@ -248,68 +353,65 @@ def tool_browser_execute_js(args: dict) -> dict:
     owner_id = int(args.get("_owner_id", 1))
     code = str(args.get("code", "")).strip()
     if not code:
-        return {"ok": False, "error": "code required"}
-    
-    session = _browser_sessions.get(owner_id)
-    if not session:
-        return {"ok": False, "error": "No browser session. Call browser_open first."}
-    
+        return {"ok": False, "error": "code is required"}
+
+    session, err = _require_session(owner_id)
+    if err:
+        return err
+
+    page = session["page"]
     try:
-        session["last_used"] = time.monotonic()
-        result = session["driver"].execute_script(code)
-        return {"ok": True, "result": str(result)[:3000] if result else None}
+        # Wrap in arrow function if it doesn't look like one
+        if not code.startswith("(") and not code.startswith("async"):
+            code = f"() => {{ return {code} }}"
+        result = page.evaluate(code)
+        import json
+        if isinstance(result, (dict, list)):
+            result_str = json.dumps(result, default=str, ensure_ascii=False)[:5000]
+        elif result is None:
+            result_str = "null"
+        else:
+            result_str = str(result)[:5000]
+        return {"ok": True, "result": result_str}
     except Exception as e:
         return {"ok": False, "error": str(e)[:300]}
 
 
 def tool_browser_close(args: dict) -> dict:
-    """Close the browser session."""
+    """Close the browser session and free resources."""
     owner_id = int(args.get("_owner_id", 1))
-    with _browser_lock:
-        session = _browser_sessions.pop(owner_id, None)
-    if session:
-        try:
-            session["driver"].quit()
-        except Exception:
-            pass
-        return {"ok": True, "message": "Browser closed."}
+    with _lock:
+        s = _sessions.get(owner_id)
+        if s:
+            _destroy_session_unlocked(owner_id)
+            return {"ok": True, "message": "Browser session closed."}
     return {"ok": True, "message": "No browser session was open."}
 
 
-# ============================================================================
-# Environment State Capture (Pillar 7)
-# ============================================================================
+# ═══════════════════════════════════════════════════════════════════════
+# Environment State Capture (Pillar 7) — kept from original
+# ═══════════════════════════════════════════════════════════════════════
 
-_env_state_cache: dict[str, dict] = {}  # "state" -> {"data": {...}, "ts": float}
+_env_state_cache: Dict[str, dict] = {}
 
 
-def utc_now_iso() -> str:
-    """Return current UTC time in ISO format."""
+def _utc_now_iso() -> str:
     from datetime import datetime, timezone
     return datetime.now(timezone.utc).isoformat()
 
 
 def capture_environment_state(owner_id: int | None = None) -> dict:
-    """Capture current environment state: open windows, key processes, etc."""
+    """Capture current environment state: open windows, key processes."""
     if not ENVIRONMENT_STATE_ENABLED:
         return {}
-    
-    # Check cache
+
     now = time.monotonic()
     cached = _env_state_cache.get("state")
     if cached and (now - cached["ts"]) < ENVIRONMENT_STATE_TTL_SECONDS:
         return cached["data"]
-    
-    state = {
-        "open_windows": [],
-        "key_processes": [],
-        "timestamp": utc_now_iso(),
-    }
-    
-    # Note: Import desktop tools would go here, but we avoid circular imports
-    # by passing the functions as parameters when needed
-    
-    # Get key processes
+
+    state = {"open_windows": [], "key_processes": [], "timestamp": _utc_now_iso()}
+
     try:
         import subprocess
         result = subprocess.run(
@@ -318,20 +420,21 @@ def capture_environment_state(owner_id: int | None = None) -> dict:
         )
         if result.returncode == 0:
             seen = set()
+            skip = frozenset({
+                "system idle process", "system", "svchost.exe", "conhost.exe",
+                "csrss.exe", "lsass.exe", "smss.exe", "wininit.exe",
+                "services.exe", "dwm.exe", "fontdrvhost.exe", "tasklist.exe",
+            })
             for line in result.stdout.strip().split("\n")[:100]:
                 parts = line.strip().strip('"').split('","')
                 if parts:
                     name = parts[0].strip('"').lower()
-                    if name not in seen and name not in (
-                        "system idle process", "system", "svchost.exe", "conhost.exe",
-                        "csrss.exe", "lsass.exe", "smss.exe", "wininit.exe", "services.exe",
-                        "dwm.exe", "fontdrvhost.exe", "tasklist.exe",
-                    ):
+                    if name not in seen and name not in skip:
                         seen.add(name)
             state["key_processes"] = sorted(list(seen))[:20]
     except Exception:
         pass
-    
+
     _env_state_cache["state"] = {"data": state, "ts": now}
     return state
 
@@ -354,7 +457,6 @@ def format_environment_state_for_prompt(state: dict) -> str:
 
 
 def _should_capture_env_state(user_message: str) -> bool:
-    """Check if user message warrants environment state capture."""
     text = (user_message or "").lower()
     keywords = (
         "desktop", "screen", "window", "app", "running", "open",
@@ -365,24 +467,23 @@ def _should_capture_env_state(user_message: str) -> bool:
 
 
 def _generate_tool_chaining_hints(user_message: str) -> list[str]:
-    """Generate tool chaining hints based on user message keywords."""
     if not TOOL_CHAINING_HINTS_ENABLED:
         return []
-    
+
     text = (user_message or "").lower()
     hints = []
-    
+
     if any(w in text for w in ("scrape", "scraping", "web page", "website content")):
-        hints.append("For web scraping: read_webpage or browser_open -> browser_get_text")
+        hints.append("For web scraping: browser_open -> browser_get_text")
     if any(w in text for w in ("login", "sign in", "authenticate")):
-        hints.append("For login flows: browser_open -> browser_type (username) -> browser_type (password) -> browser_click (submit)")
+        hints.append("For login: browser_open -> browser_type (user) -> browser_type (pass) -> browser_click (submit)")
     if any(w in text for w in ("screenshot", "capture", "visual")):
-        hints.append("For visual capture: browser_open -> browser_screenshot or desktop_screenshot")
+        hints.append("For screenshots: browser_open -> browser_screenshot")
     if any(w in text for w in ("fill form", "submit form", "form")):
-        hints.append("For forms: browser_open -> browser_type (fields) -> browser_click (submit) -> browser_get_text (confirmation)")
+        hints.append("For forms: browser_open -> browser_type (fields) -> browser_click (submit)")
     if any(w in text for w in ("download", "save file")):
-        hints.append("For downloads: search_web -> read_webpage or browser_open -> browser_execute_js")
+        hints.append("For downloads: browser_open -> browser_execute_js")
     if any(w in text for w in ("research", "compare", "analysis")):
-        hints.append("For research: deep_research or search_web -> read_webpage (multiple) -> save_research_note")
-    
+        hints.append("For research: search_web -> browser_open -> browser_get_text")
+
     return hints[:3]

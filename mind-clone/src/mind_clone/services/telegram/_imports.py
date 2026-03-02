@@ -282,7 +282,7 @@ from mind_clone.core.model_router import (
 
 # Import browser cleanup
 from mind_clone.tools.browser import (
-    _cleanup_browser_sessions,
+    cleanup_idle_sessions as _cleanup_browser_sessions,
 )
 
 # Import utilities

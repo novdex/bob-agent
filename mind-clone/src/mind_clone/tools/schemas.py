@@ -307,6 +307,22 @@ BROWSER_SCREENSHOT_SCHEMA = {
     },
 }
 
+
+BROWSER_EXECUTE_JS_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "browser_execute_js",
+        "description": "Execute JavaScript code in the browser page context and return the result. Requires browser_open first.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "code": {"type": "string", "description": "JavaScript code to execute (e.g. 'document.title' or '() => document.querySelectorAll(\\"a\\").length')"},
+            },
+            "required": ["code"],
+        },
+    },
+}
+
 BROWSER_CLOSE_SCHEMA = {
     "type": "function",
     "function": {
@@ -376,6 +392,7 @@ ALL_TOOL_SCHEMAS = [
     BROWSER_CLICK_SCHEMA,
     BROWSER_TYPE_SCHEMA,
     BROWSER_SCREENSHOT_SCHEMA,
+    BROWSER_EXECUTE_JS_SCHEMA,
     BROWSER_CLOSE_SCHEMA,
     AGENT_TEAM_RUN_SCHEMA,
     AGENT_TEAM_STATUS_SCHEMA,
@@ -476,5 +493,6 @@ __all__ = [
     "BROWSER_CLICK_SCHEMA",
     "BROWSER_TYPE_SCHEMA",
     "BROWSER_SCREENSHOT_SCHEMA",
+    "BROWSER_EXECUTE_JS_SCHEMA",
     "BROWSER_CLOSE_SCHEMA",
 ]
