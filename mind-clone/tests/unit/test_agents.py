@@ -921,3 +921,46 @@ class TestOrchestrator:
         events = [e["event"] for e in result["log"]]
         assert "start" in events
         assert "plan" in events
+
+# ── New tests: stderr capture & collection error detection ──────────────
+
+def test_run_tests_stderr_captured():
+    """Verify that collection errors in stderr are captured in output."""
+    cfg = AgentConfig(repo_root="/tmp/test-repo")
+    ws = Workspace(cfg)
+    fake_result = subprocess.CompletedProcess(
+        args=[], returncode=1,
+        stdout="",
+        stderr="ERROR collecting tests/test_foo.py\nImportError: No module named 'bogus'\n",
+    )
+    with patch("subprocess.run", return_value=fake_result):
+        ok, output = ws.run_tests()
+    assert not ok
+    assert "ImportError" in output
+    assert "bogus" in output
+
+
+def test_collection_error_detected():
+    """When pytest fails with 0 passed / 0 failed, Tester flags collection error."""
+    cfg = AgentConfig(repo_root="/tmp/test-repo")
+    ws = Workspace(cfg)
+    tester = Tester(ws, cfg)
+    with patch.object(ws, "run_compile_check", return_value=(True, "")), \
+         patch.object(ws, "run_tests", return_value=(False, "ERROR collecting tests\nImportError: cannot import")):
+        result = tester.run_full_check()
+    assert not result["passed"]
+    assert "collection error" in result["failure_summary"].lower()
+
+
+def test_collection_error_vs_real_failure():
+    """Real failures (passed > 0) should NOT trigger collection error path."""
+    cfg = AgentConfig(repo_root="/tmp/test-repo")
+    ws = Workspace(cfg)
+    tester = Tester(ws, cfg)
+    with patch.object(ws, "run_compile_check", return_value=(True, "")), \
+         patch.object(ws, "run_tests", return_value=(False, "5 passed, 2 failed")):
+        result = tester.run_full_check()
+    assert not result["passed"]
+    assert result["tests_passed"] == 5
+    assert result["tests_failed"] == 2
+    assert "collection error" not in result["failure_summary"].lower()

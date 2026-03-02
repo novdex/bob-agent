@@ -209,7 +209,7 @@ class Workspace:
     # Test runner
     # ------------------------------------------------------------------
 
-    def run_tests(self, timeout: int = 180) -> Tuple[bool, str]:
+    def run_tests(self, timeout: int = 300) -> Tuple[bool, str]:
         """
         Run the test suite.
 
@@ -218,15 +218,23 @@ class Workspace:
         """
         try:
             result = subprocess.run(
-                ["python", "-m", "pytest", "--tb=short", "-q"],
+                ["python", "-m", "pytest", "--tb=short", "-q", "--no-header"],
                 capture_output=True,
                 text=True,
                 timeout=timeout,
                 cwd=str(self.root),
             )
             passed = result.returncode == 0
-            output = result.stdout[-3000:] + "\n" + result.stderr[-1000:]
-            return passed, output.strip()
+            # stderr first — collection errors live here
+            stderr_text = result.stderr.strip()
+            stdout_text = result.stdout.strip()
+            parts = []
+            if stderr_text:
+                parts.append(stderr_text[:2000])
+            if stdout_text:
+                parts.append(stdout_text[-3000:])
+            output = "\n".join(parts)
+            return passed, output
         except subprocess.TimeoutExpired:
             return False, f"Tests timed out after {timeout}s"
         except Exception as e:

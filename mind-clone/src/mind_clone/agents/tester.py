@@ -57,8 +57,11 @@ class Tester:
         tests_ok, output = self.workspace.run_tests()
         passed, failed, skipped = self._parse_test_counts(output)
 
+        # Detect collection errors: pytest ran but collected 0 tests
+        collection_error = (not tests_ok and passed == 0 and failed == 0)
+
         result = {
-            "passed": tests_ok and failed == 0,
+            "passed": tests_ok and failed == 0 and not collection_error,
             "compile_ok": True,
             "tests_passed": passed,
             "tests_failed": failed,
@@ -67,7 +70,17 @@ class Tester:
             "failure_summary": "",
         }
 
-        if not result["passed"]:
+        if collection_error:
+            result["failure_summary"] = (
+                "Pytest collection error — no tests were collected. "
+                "Likely an import error or syntax error in a test file or source file. "
+                f"Output:\n{output[:1500]}"
+            )
+            logger.error(
+                "Tests COLLECTION ERROR — 0 tests collected. Output: %s",
+                output[:500],
+            )
+        elif not result["passed"]:
             result["failure_summary"] = self._extract_failure_summary(output)
             logger.warning(
                 "Tests FAILED: %d passed, %d failed, %d skipped",
