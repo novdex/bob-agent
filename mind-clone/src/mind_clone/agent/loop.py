@@ -317,6 +317,7 @@ def run_agent_turn(
         total_tokens += usage.get("total_tokens", 0)
 
         content = result.get("content", "")
+        reasoning_content = result.get("reasoning_content", "")
         tool_calls = result.get("tool_calls")
 
         # If no tool calls, check for capability gap before returning
@@ -338,11 +339,15 @@ def run_agent_turn(
 
         # Save assistant message with tool calls
         save_assistant_message(db, owner_id, content, tool_calls=tool_calls)
-        messages.append({
+        # Kimi K2.5 requires reasoning_content on assistant tool-call messages
+        assistant_msg = {
             "role": "assistant",
             "content": content,
             "tool_calls": tool_calls,
-        })
+        }
+        if reasoning_content:
+            assistant_msg["reasoning_content"] = reasoning_content
+        messages.append(assistant_msg)
 
         # Execute tools
         for tool_call in tool_calls:

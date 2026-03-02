@@ -118,11 +118,13 @@ def _call_llm_internal(
         
         data = response.json()
         
+        msg = data["choices"][0]["message"]
         return {
             "ok": True,
             "data": data,
-            "content": data["choices"][0]["message"].get("content", ""),
-            "tool_calls": data["choices"][0]["message"].get("tool_calls"),
+            "content": msg.get("content", ""),
+            "reasoning_content": msg.get("reasoning_content", ""),
+            "tool_calls": msg.get("tool_calls"),
             "usage": data.get("usage", {}),
         }
     
