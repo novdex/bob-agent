@@ -21,7 +21,7 @@ class AgentConfig:
     base_url: str = "https://api.moonshot.ai/v1"
     model: str = "kimi-k2.5"
     max_tokens: int = 8192
-    temperature: float = 0.7
+    temperature: float = 1.0  # Kimi K2.5 requires exactly 1.0
 
     # --- Workspace ---
     repo_root: str = ""          # auto-detected
