@@ -268,7 +268,7 @@ BROWSER_CLICK_SCHEMA = {
     "type": "function",
     "function": {
         "name": "browser_click",
-        "description": "Click an element",
+        "description": "Click a page element identified by CSS selector. Waits for the element to be visible before clicking.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -283,7 +283,7 @@ BROWSER_TYPE_SCHEMA = {
     "type": "function",
     "function": {
         "name": "browser_type",
-        "description": "Type text into element",
+        "description": "Type text into a form input or other editable element identified by CSS selector. Optionally press Enter to submit.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -299,7 +299,7 @@ BROWSER_SCREENSHOT_SCHEMA = {
     "type": "function",
     "function": {
         "name": "browser_screenshot",
-        "description": "Take browser screenshot",
+        "description": "Capture a screenshot of the current browser page. Returns the file path to the saved PNG image.",
         "parameters": {
             "type": "object",
             "properties": {},
