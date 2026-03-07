@@ -75,6 +75,11 @@ class Settings(BaseSettings):
     )
     webhook_base_url: str = Field(default="https://your-domain.com", alias="WEBHOOK_BASE_URL")
 
+    # SSL/TLS
+    ssl_certfile: str = Field(default="", alias="SSL_CERTFILE")
+    ssl_keyfile: str = Field(default="", alias="SSL_KEYFILE")
+    ssl_keyfile_password: str = Field(default="", alias="SSL_KEYFILE_PASSWORD")
+
     # =========================================================================
     # LLM Settings
     # =========================================================================
@@ -422,7 +427,17 @@ settings = Settings()
 # Telegram settings
 TELEGRAM_BOT_TOKEN = settings.telegram_bot_token
 TELEGRAM_WEBHOOK_BASE_URL = settings.webhook_base_url
+
+# SSL/TLS
+SSL_CERTFILE = settings.ssl_certfile
+SSL_KEYFILE = settings.ssl_keyfile
+SSL_KEYFILE_PASSWORD = settings.ssl_keyfile_password
 WEBHOOK_BASE_URL = settings.webhook_base_url
+
+# SSL/TLS
+SSL_CERTFILE = settings.ssl_certfile
+SSL_KEYFILE = settings.ssl_keyfile
+SSL_KEYFILE_PASSWORD = settings.ssl_keyfile_password
 TOKEN_PLACEHOLDER = "YOUR_TELEGRAM_BOT_TOKEN_HERE"
 
 # Model settings

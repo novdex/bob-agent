@@ -205,6 +205,26 @@ Examples:
         help="Number of worker processes (default: 1)",
     )
 
+    # SSL/TLS
+    parser.add_argument(
+        "--ssl-certfile",
+        type=str,
+        default="",
+        help="Path to SSL certificate file (PEM) for HTTPS",
+    )
+    parser.add_argument(
+        "--ssl-keyfile",
+        type=str,
+        default="",
+        help="Path to SSL private key file (PEM) for HTTPS",
+    )
+    parser.add_argument(
+        "--ssl-keyfile-password",
+        type=str,
+        default="",
+        help="Password for SSL key file (if encrypted)",
+    )
+
     # Logging
     parser.add_argument(
         "--verbose",
@@ -330,7 +350,8 @@ def initialize_services() -> None:
 
 
 def start_web_server(
-    host: str = "0.0.0.0", port: int = 8000, reload: bool = False, workers: int = 1
+    host: str = "0.0.0.0", port: int = 8000, reload: bool = False, workers: int = 1,
+    ssl_certfile: str = "", ssl_keyfile: str = "", ssl_keyfile_password: str = "",
 ) -> None:
     """
     Start the Uvicorn web server with FastAPI application.
@@ -340,13 +361,17 @@ def start_web_server(
         port: Port number to listen on
         reload: Enable auto-reload for development
         workers: Number of worker processes
+        ssl_certfile: Path to SSL certificate file (PEM format)
+        ssl_keyfile: Path to SSL private key file (PEM format)
+        ssl_keyfile_password: Password for SSL key file (if encrypted)
     """
+    import os
+
     # Create FastAPI app
     app = create_app()
 
-    # Configure Uvicorn
-    config = uvicorn.Config(
-        app,
+    # Build Uvicorn config kwargs
+    uvicorn_kwargs = dict(
         host=host,
         port=port,
         reload=reload,
@@ -355,12 +380,41 @@ def start_web_server(
         access_log=True,
     )
 
+    # Wire SSL if certificate and key are provided
+    ssl_cert = ssl_certfile or os.environ.get("SSL_CERTFILE", "")
+    ssl_key = ssl_keyfile or os.environ.get("SSL_KEYFILE", "")
+    ssl_pass = ssl_keyfile_password or os.environ.get("SSL_KEYFILE_PASSWORD", "")
+
+    scheme = "http"
+    if ssl_cert and ssl_key:
+        if not os.path.isfile(ssl_cert):
+            log.error(f"SSL_CERTFILE not found: {ssl_cert}")
+            print(f"\n[ERROR] SSL certificate file not found: {ssl_cert}")
+            sys.exit(1)
+        if not os.path.isfile(ssl_key):
+            log.error(f"SSL_KEYFILE not found: {ssl_key}")
+            print(f"\n[ERROR] SSL key file not found: {ssl_key}")
+            sys.exit(1)
+
+        uvicorn_kwargs["ssl_certfile"] = ssl_cert
+        uvicorn_kwargs["ssl_keyfile"] = ssl_key
+        if ssl_pass:
+            uvicorn_kwargs["ssl_keyfile_password"] = ssl_pass
+        scheme = "https"
+        log.info(f"SSL enabled: cert={ssl_cert} key={ssl_key}")
+
+    # Configure Uvicorn
+    config = uvicorn.Config(app, **uvicorn_kwargs)
+
     server = uvicorn.Server(config)
 
-    log.info(f"Starting web server on {host}:{port}")
-    print(f"\n[OK] Server running at http://{host}:{port}")
-    print(f"[OK] Health check: http://{host}:{port}/health")
-    print(f"[OK] API docs: http://{host}:{port}/docs\n")
+    log.info(f"Starting web server on {scheme}://{host}:{port}")
+    print(f"\n[OK] Server running at {scheme}://{host}:{port}")
+    print(f"[OK] Health check: {scheme}://{host}:{port}/health")
+    print(f"[OK] API docs: {scheme}://{host}:{port}/docs")
+    if scheme == "https":
+        print(f"[OK] SSL: certificate={ssl_cert}")
+    print()
 
     try:
         server.run()
@@ -487,6 +541,9 @@ def main(args: Optional[list[str]] = None) -> int:
                 port=parsed_args.port,
                 reload=parsed_args.reload,
                 workers=parsed_args.workers,
+                ssl_certfile=parsed_args.ssl_certfile,
+                ssl_keyfile=parsed_args.ssl_keyfile,
+                ssl_keyfile_password=parsed_args.ssl_keyfile_password,
             )
 
     except Exception as e:

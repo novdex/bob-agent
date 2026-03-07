@@ -108,18 +108,37 @@ def get_execution_sandbox_profile() -> Dict[str, any]:
 
 
 def check_tool_allowed(tool_name: str) -> Tuple[bool, Optional[str]]:
-    """Check if a tool is allowed by current policy."""
-    policy = get_tool_policy_profile()
+    """Check if a tool is allowed by current policy.
 
+    Checks both the execution sandbox profile (run_command/execute_python
+    access) and the tool policy profile (safe/balanced/power allow/block
+    lists).  Increments the ``tool_policy_blocks`` runtime counter on
+    every block so the dashboard can surface enforcement events.
+    """
+    from .state import increment_runtime_state
+    from .policies import is_tool_blocked_by_policy
+
+    # 1. Execution sandbox check (run_command / execute_python)
     if tool_name in ("run_command", "execute_python"):
         sandbox = get_execution_sandbox_profile()
         if tool_name == "run_command" and not sandbox.get("allow_run_command"):
+            increment_runtime_state("tool_policy_blocks")
             return False, "run_command not allowed in current sandbox profile"
         if tool_name == "execute_python" and not sandbox.get("allow_execute_python"):
+            increment_runtime_state("tool_policy_blocks")
             return False, "execute_python not allowed in current sandbox profile"
 
+    # 2. Tool policy profile check (safe blocks write_file etc.)
+    policy = get_tool_policy_profile()
     if tool_name == "write_file" and not policy.get("allow_write_file", True):
+        increment_runtime_state("tool_policy_blocks")
         return False, "write_file not allowed in current tool policy"
+
+    # 3. Profile-level allow/block list check
+    if is_tool_blocked_by_policy(tool_name):
+        increment_runtime_state("tool_policy_blocks")
+        profile_name = settings.tool_policy_profile
+        return False, f"tool '{tool_name}' blocked by '{profile_name}' policy profile"
 
     return True, None
 
@@ -256,8 +275,15 @@ from urllib.parse import urlparse
 _CIRCUIT_BREAKER_LOCK = threading.Lock()
 _CIRCUIT_BREAKER_STATE: Dict[str, Dict[str, any]] = {}
 
-_CIRCUIT_BREAKER_FAILURE_THRESHOLD = 5
-_CIRCUIT_BREAKER_COOLDOWN_SECONDS = 60
+
+def _cb_threshold() -> int:
+    """Read failure threshold from settings (not hardcoded)."""
+    return getattr(settings, "circuit_breaker_failure_threshold", 5)
+
+
+def _cb_cooldown() -> float:
+    """Read cooldown seconds from settings (not hardcoded)."""
+    return float(getattr(settings, "circuit_breaker_cooldown_seconds", 60))
 
 
 def _default_circuit_state() -> Dict[str, any]:
@@ -265,51 +291,75 @@ def _default_circuit_state() -> Dict[str, any]:
         "failures": 0,
         "last_failure": None,
         "opened_at": None,
-        "closed": False,
+        "open": False,  # True = circuit tripped / calls blocked
     }
 
 
 def circuit_allow_call(provider: str) -> Tuple[bool, str]:
+    """Return (allowed, reason).  Resets after cooldown."""
     state = _ensure_circuit_state(provider)
     with _CIRCUIT_BREAKER_LOCK:
-        if not state["closed"]:
+        if not state["open"]:
             return True, ""
 
+        # Half-open: check if cooldown has elapsed
         opened_at = state.get("opened_at")
         if opened_at:
             elapsed = time.monotonic() - opened_at
-            if elapsed >= _CIRCUIT_BREAKER_COOLDOWN_SECONDS:
-                state["closed"] = False
+            if elapsed >= _cb_cooldown():
+                state["open"] = False
                 state["failures"] = 0
                 state["opened_at"] = None
-                logger.info(f"Circuit breaker RESET for provider: {provider}")
+                logger.info("Circuit breaker RESET for provider: %s (cooldown %.0fs elapsed)", provider, elapsed)
                 return True, ""
 
-        return False, f"Circuit breaker OPEN for {provider}"
-
-    return True, ""
+        return False, f"Circuit breaker OPEN for {provider} (failures={state['failures']}, cooldown={_cb_cooldown()}s)"
 
 
 def circuit_record_success(provider: str):
+    """Record a successful call — resets failure count."""
     state = _ensure_circuit_state(provider)
     with _CIRCUIT_BREAKER_LOCK:
         state["failures"] = 0
-        state["closed"] = False
+        state["open"] = False
         state["opened_at"] = None
 
 
 def circuit_record_failure(provider: str, error_message: str):
+    """Record a failed call — trips circuit when threshold reached."""
     state = _ensure_circuit_state(provider)
+    threshold = _cb_threshold()
     with _CIRCUIT_BREAKER_LOCK:
         state["failures"] += 1
         state["last_failure"] = error_message
 
-        if state["failures"] >= _CIRCUIT_BREAKER_FAILURE_THRESHOLD:
-            state["closed"] = True
+        if state["failures"] >= threshold and not state["open"]:
+            state["open"] = True
             state["opened_at"] = time.monotonic()
             logger.warning(
-                f"Circuit breaker OPENED for provider: {provider} (failures: {state['failures']})"
+                "Circuit breaker OPENED for provider: %s (failures=%d >= threshold=%d)",
+                provider, state["failures"], threshold,
             )
+
+
+def circuit_reset(provider: str) -> bool:
+    """Manually reset a circuit for a provider. Returns True if it existed."""
+    with _CIRCUIT_BREAKER_LOCK:
+        if provider in _CIRCUIT_BREAKER_STATE:
+            _CIRCUIT_BREAKER_STATE[provider] = _default_circuit_state()
+            logger.info("Circuit breaker manually RESET for provider: %s", provider)
+            return True
+        return False
+
+
+def circuit_reset_all() -> int:
+    """Manually reset all circuits. Returns count cleared."""
+    with _CIRCUIT_BREAKER_LOCK:
+        count = len(_CIRCUIT_BREAKER_STATE)
+        _CIRCUIT_BREAKER_STATE.clear()
+        if count:
+            logger.info("All circuit breakers reset (%d providers)", count)
+        return count
 
 
 def _ensure_circuit_state(provider: str) -> Dict[str, any]:
@@ -320,6 +370,7 @@ def _ensure_circuit_state(provider: str) -> Dict[str, any]:
 
 
 def circuit_snapshot() -> Dict[str, any]:
+    """Deep-ish copy of all circuit states for diagnostics."""
     with _CIRCUIT_BREAKER_LOCK:
         return {provider: dict(state) for provider, state in _CIRCUIT_BREAKER_STATE.items()}
 
