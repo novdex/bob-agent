@@ -4,6 +4,7 @@ FastAPI application factory.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -32,9 +33,53 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("Failed to load custom tools: %s", exc)
 
+    # Start Telegram polling as a background task
+    polling_task = None
+    try:
+        from ..services.telegram.bot import get_bot_application
+        bot_app = get_bot_application()
+        if bot_app:
+            async def _run_telegram_polling():
+                try:
+                    await bot_app.initialize()
+                    await bot_app.start()
+                    await bot_app.updater.start_polling(
+                        poll_interval=0.5,
+                        timeout=30,
+                        drop_pending_updates=False,
+                        allowed_updates=["message", "edited_message", "callback_query"],
+                    )
+                    logger.info("Telegram polling started as background task")
+                    while True:
+                        await asyncio.sleep(1)
+                except asyncio.CancelledError:
+                    pass
+                except Exception as exc:
+                    logger.error("Telegram polling error: %s", exc)
+                finally:
+                    try:
+                        await bot_app.updater.stop()
+                        await bot_app.stop()
+                        await bot_app.shutdown()
+                    except Exception:
+                        pass
+
+            polling_task = asyncio.create_task(_run_telegram_polling())
+            logger.info("Telegram polling task created")
+        else:
+            logger.warning("Telegram bot token not configured, polling disabled")
+    except Exception as exc:
+        logger.warning("Failed to start Telegram polling: %s", exc)
+
     yield
-    
+
     # Shutdown
+    if polling_task and not polling_task.done():
+        polling_task.cancel()
+        try:
+            await polling_task
+        except asyncio.CancelledError:
+            pass
     logger.info("Shutting down Mind Clone Agent API")
 
 
@@ -46,7 +91,7 @@ def create_app() -> FastAPI:
         version="0.1.0",
         lifespan=lifespan,
     )
-    
+
     # CORS
     app.add_middleware(
         CORSMiddleware,
@@ -55,8 +100,8 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    
+
     # Include routes
     app.include_router(router)
-    
+
     return app

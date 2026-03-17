@@ -31,6 +31,7 @@ from .identity import load_identity
 logger = logging.getLogger("mind_clone.agent.loop")
 
 MAX_TOOL_LOOPS = 50
+MAX_CONSECUTIVE_LLM_FAILURES = 6
 
 # Gap phrases indicating the LLM doesn't have a capability
 _GAP_PHRASES = frozenset({
@@ -46,12 +47,17 @@ _GAP_HINT_MESSAGE = (
     "for capabilities you don't currently have. Define a Python function "
     "`def tool_main(args: dict) -> dict:` and register it. Available safe "
     "imports: math, json, re, datetime, hashlib, base64, urllib.parse, "
-    "collections, itertools, functools, string, textwrap, csv, io, statistics."
+    "collections, itertools, functools, string, textwrap, csv, io, statistics, "
+    "httpx, os, pathlib, subprocess, numpy, pandas, PIL, sqlite3, socket, ssl, "
+    "shutil, glob, tempfile, uuid, random, time, threading, logging, struct, "
+    "decimal, fractions, html, xml, email, mimetypes, fnmatch, copy, pprint, "
+    "difflib, typing, dataclasses, enum, abc, contextlib, operator, bisect, "
+    "heapq, sys, traceback, inspect, platform, urllib, http."
 )
 
 
 def _sanitize_tool_pairs(messages: List[dict]) -> List[dict]:
-    """Sanitize tool_call ↔ tool_response pairs for LLM API compatibility.
+    """Sanitize tool_call / tool_response pairs for LLM API compatibility.
 
     Ensures:
     1. Every assistant tool_call has a matching tool_response
@@ -152,11 +158,11 @@ def _classify_message_complexity(message: Optional[str]) -> str:
 
     msg_lower = message.lower().strip()
 
-    # Very short → simple
+    # Very short -> simple
     if len(msg_lower.split()) <= 3:
         return "simple"
 
-    # Single short keywords → simple
+    # Single short keywords -> simple
     simple_keywords = {"hi", "hello", "hey", "ok", "yes", "no", "thanks", "status"}
     if msg_lower in simple_keywords:
         return "simple"
@@ -289,8 +295,9 @@ def run_agent_turn(
     # Load identity
     identity = load_identity(db, owner_id)
 
-    # Prepare messages
+    # Prepare messages and sanitize DB history (fixes orphaned tool_calls)
     messages = prepare_messages_for_llm(db, owner_id)
+    messages = _sanitize_tool_pairs(messages)
 
     # Inject matching skill playbooks before LLM call
     _inject_matching_skills(db, owner_id, user_message, messages)
@@ -308,9 +315,27 @@ def run_agent_turn(
         result = call_llm(messages, tools=tools)
 
         if not result.get("ok"):
-            error_msg = f"LLM error: {result.get('error', 'Unknown error')}"
-            save_assistant_message(db, owner_id, error_msg)
-            return error_msg
+            error_msg = result.get("error", "Unknown error")
+            # Short-circuit on 400 errors (client-side, won't fix by retrying)
+            if "HTTP 400" in error_msg or "400" in error_msg[:20]:
+                msg = f"LLM error: {error_msg}"
+                save_assistant_message(db, owner_id, msg)
+                return msg
+            # Retry with exponential backoff
+            if not hasattr(run_agent_turn, "_consecutive_failures"):
+                run_agent_turn._consecutive_failures = 0
+            run_agent_turn._consecutive_failures += 1
+            if run_agent_turn._consecutive_failures >= MAX_CONSECUTIVE_LLM_FAILURES:
+                run_agent_turn._consecutive_failures = 0
+                msg = f"LLM error after {MAX_CONSECUTIVE_LLM_FAILURES} retries: {error_msg}"
+                save_assistant_message(db, owner_id, msg)
+                return msg
+            import time as _time
+            backoff = min(30, 2 ** run_agent_turn._consecutive_failures)
+            logger.warning("LLM_RETRY attempt=%d backoff=%ds error=%s",
+                           run_agent_turn._consecutive_failures, backoff, error_msg[:100])
+            _time.sleep(backoff)
+            continue
 
         # Track usage
         usage = result.get("usage", {})

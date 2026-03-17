@@ -236,6 +236,12 @@ async def dispatch_incoming_message(
         )
 
     enqueue_now = should_enqueue_message(owner_id, source=source, text=text) or source == "cron"
+
+    # Fallback: if queue is desired but no workers alive, run directly
+    if enqueue_now and active_command_queue_worker_count() < 1:
+        log.warning("COMMAND_QUEUE_BYPASS owner=%d reason=no_workers_alive", owner_id)
+        enqueue_now = False
+
     if enqueue_now:
         loop = asyncio.get_running_loop()
         future = loop.create_future() if expect_response else None

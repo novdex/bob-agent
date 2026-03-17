@@ -70,6 +70,11 @@ class Settings(BaseSettings):
     kimi_model: str = "kimi-k2.5"
     kimi_fallback_model: str = Field(default="", alias="KIMI_FALLBACK_MODEL")
 
+    # Failover chain API keys
+    deepseek_api_key: str = Field(default="", alias="DEEPSEEK_API_KEY")
+    openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
+    anthropic_api_key: str = Field(default="", alias="ANTHROPIC_API_KEY")
+
     telegram_bot_token: str = Field(
         default="YOUR_TELEGRAM_BOT_TOKEN_HERE", alias="TELEGRAM_BOT_TOKEN"
     )

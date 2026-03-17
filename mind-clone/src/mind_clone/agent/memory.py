@@ -40,9 +40,13 @@ def get_conversation_history(
 
     messages = []
     for row in rows:
-        msg = {
-            "role": row.role,
-            "content": row.content,
+        # Ensure content is always a string — NULL from DB causes Kimi 400
+        content = row.content if row.content is not None else ""
+        role = row.role or "user"
+
+        msg: Dict[str, Any] = {
+            "role": role,
+            "content": content,
         }
         if row.tool_call_id:
             msg["tool_call_id"] = row.tool_call_id
@@ -164,7 +168,7 @@ def get_conversation_summaries(
         .limit(limit)
         .all()
     )
-    
+
     summaries = []
     for row in rows:
         try:
@@ -173,14 +177,14 @@ def get_conversation_summaries(
         except json.JSONDecodeError:
             key_points = []
             open_loops = []
-        
+
         summaries.append({
             "summary": row.summary,
             "key_points": key_points,
             "open_loops": open_loops,
             "created_at": row.created_at.isoformat() if row.created_at else None,
         })
-    
+
     return summaries
 
 
@@ -191,13 +195,13 @@ def prepare_messages_for_llm(
 ) -> List[Dict[str, Any]]:
     """Prepare messages for LLM context window."""
     messages = get_conversation_history(db, owner_id, limit=recent_limit)
-    
+
     # Add system message at start
     system_msg = {
         "role": "system",
         "content": "You are Mind Clone, a sovereign AI agent. Use tools as needed.",
     }
-    
+
     return [system_msg] + messages
 
 
@@ -313,7 +317,7 @@ def trim_context_window(
     """Trim messages to fit within character budget."""
     if not messages:
         return messages
-    
+
     # Keep system message
     system_msg = None
     other_msgs = []
@@ -322,17 +326,17 @@ def trim_context_window(
             system_msg = msg
         else:
             other_msgs.append(msg)
-    
+
     # Calculate total length
     total_chars = sum(len(str(msg.get("content", ""))) for msg in messages)
-    
+
     if total_chars <= max_chars:
         return messages
-    
+
     # Remove older messages until under budget
     result = [system_msg] if system_msg else []
     current_chars = len(str(system_msg.get("content", ""))) if system_msg else 0
-    
+
     # Add messages from most recent
     for msg in reversed(other_msgs):
         msg_chars = len(str(msg.get("content", "")))
@@ -340,7 +344,7 @@ def trim_context_window(
             break
         result.append(msg)
         current_chars += msg_chars
-    
+
     # Reverse to maintain order
     result = [m for m in [system_msg] if m] + list(reversed([m for m in result if m.get("role") != "system"]))
 
