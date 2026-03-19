@@ -87,16 +87,20 @@ def _sanitize_tool_pairs(messages: List[dict]) -> List[dict]:
     # Only IDs present on BOTH sides are valid
     valid_ids: set = assistant_tool_call_ids & tool_response_ids
 
-    # Pass 2: filter
+    # Pass 2: filter — build result, tracking which tool_call IDs are already claimed
     result = []
+    claimed_ids: set = set()  # tool_call IDs already matched by a previous assistant msg
+
     for msg in messages:
         role = msg.get("role")
 
         if role == "tool":
-            # Keep only if its ID is in valid_ids
-            if msg.get("tool_call_id") in valid_ids:
+            tid = msg.get("tool_call_id")
+            # Keep only if it's in valid_ids AND not yet claimed by a duplicate
+            if tid in valid_ids:
                 result.append(msg)
-            # else: orphaned tool response — drop it
+                claimed_ids.add(tid)
+            # else: orphaned or duplicate — drop
             continue
 
         if role == "assistant":
@@ -104,25 +108,27 @@ def _sanitize_tool_pairs(messages: List[dict]) -> List[dict]:
             tool_calls = msg_copy.get("tool_calls")
 
             if not tool_calls:
-                # No tool calls — just fix empty content
                 if msg_copy.get("content") in ("", None):
                     msg_copy["content"] = "(empty)"
                 result.append(msg_copy)
                 continue
 
-            # Filter tool_calls to only those with valid (matched) IDs
-            valid_tcs = [tc for tc in tool_calls if tc.get("id") in valid_ids]
+            # Filter to valid IDs that haven't been claimed yet
+            fresh_tcs = [
+                tc for tc in tool_calls
+                if tc.get("id") in valid_ids and tc.get("id") not in claimed_ids
+            ]
 
-            if not valid_tcs:
-                # No valid tool calls remain — strip tool_calls entirely
+            if not fresh_tcs:
+                # All IDs already claimed by earlier assistant msg OR none valid
+                # Strip tool_calls — treat as plain text response
                 msg_copy.pop("tool_calls", None)
                 if msg_copy.get("content") in ("", None):
                     msg_copy["content"] = "(empty)"
                 result.append(msg_copy)
                 continue
 
-            # Some valid tool calls — keep only the matched ones
-            msg_copy["tool_calls"] = valid_tcs
+            msg_copy["tool_calls"] = fresh_tcs
             if "reasoning_content" not in msg_copy:
                 msg_copy["reasoning_content"] = msg_copy.get("content", "") or ""
             if msg_copy.get("content") in ("", None):
@@ -139,7 +145,30 @@ def _sanitize_tool_pairs(messages: List[dict]) -> List[dict]:
 
         result.append(msg)
 
-    return result
+    # Pass 3: final check — remove any assistant tool_calls whose responses
+    # didn't end up in the result (can happen if tool responses were dropped)
+    final_tool_response_ids = {
+        m.get("tool_call_id") for m in result if m.get("role") == "tool"
+    }
+    final = []
+    for msg in result:
+        if msg.get("role") == "assistant" and msg.get("tool_calls"):
+            msg_copy = msg.copy()
+            matched_tcs = [
+                tc for tc in msg_copy["tool_calls"]
+                if tc.get("id") in final_tool_response_ids
+            ]
+            if not matched_tcs:
+                msg_copy.pop("tool_calls", None)
+                if msg_copy.get("content") in ("", None):
+                    msg_copy["content"] = "(empty)"
+            else:
+                msg_copy["tool_calls"] = matched_tcs
+            final.append(msg_copy)
+        else:
+            final.append(msg)
+
+    return final
 
 
 def _classify_message_complexity(message: Optional[str]) -> str:
