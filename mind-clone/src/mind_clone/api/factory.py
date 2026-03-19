@@ -98,7 +98,24 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("Failed to seed proactive check-in job: %s", exc)
 
+    # Start cron supervisor (runs scheduled jobs including proactive check-ins)
+    cron_task = None
+    try:
+        from ..services.telegram.supervisors import cron_supervisor_loop
+        cron_task = asyncio.create_task(cron_supervisor_loop())
+        logger.info("Cron supervisor started")
+    except Exception as exc:
+        logger.warning("Failed to start cron supervisor: %s", exc)
+
     yield
+
+    # Shutdown cron supervisor
+    if cron_task and not cron_task.done():
+        cron_task.cancel()
+        try:
+            await cron_task
+        except asyncio.CancelledError:
+            pass
 
     # Shutdown queue workers
     try:
