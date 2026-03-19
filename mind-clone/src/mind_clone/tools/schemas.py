@@ -399,6 +399,22 @@ ALL_TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "get_patterns",
+            "description": (
+                "Get Arsh's conversation patterns — recurring topics, interests, and what he "
+                "asks about most. Use when asked about what Arsh cares about, to be more "
+                "proactive, or when deciding what to monitor automatically."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "run_retro",
             "description": (
                 "Run Bob's self-awareness retro. Collects stats from the last 24h "

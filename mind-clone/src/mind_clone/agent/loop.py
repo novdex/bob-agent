@@ -302,6 +302,13 @@ def run_agent_turn(
     # Inject matching skill playbooks before LLM call
     _inject_matching_skills(db, owner_id, user_message, messages)
 
+    # Inject predictive context (user's recurring interests + patterns)
+    try:
+        from ..services.prediction import inject_predictive_context
+        inject_predictive_context(db, owner_id, user_message, messages)
+    except Exception as _pred_err:
+        logger.debug("PREDICTIVE_INJECT_SKIP: %s", str(_pred_err)[:100])
+
     # Get tool definitions (built-in + custom)
     tools = effective_tool_definitions(owner_id=owner_id)
 
@@ -360,6 +367,19 @@ def run_agent_turn(
                     continue  # Re-call LLM with hint injected
 
             save_assistant_message(db, owner_id, content)
+
+            # Update pattern tracker after successful turn (non-blocking)
+            try:
+                from ..services.prediction import update_patterns_after_turn
+                import threading
+                threading.Thread(
+                    target=update_patterns_after_turn,
+                    args=(owner_id, user_message),
+                    daemon=True,
+                ).start()
+            except Exception:
+                pass
+
             return content
 
         # Save assistant message with tool calls

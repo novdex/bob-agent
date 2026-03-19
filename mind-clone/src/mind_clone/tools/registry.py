@@ -118,6 +118,28 @@ logger = logging.getLogger("mind_clone.tools")
 # Self-awareness retro tool
 # ---------------------------------------------------------------------------
 
+def tool_get_patterns(args: dict) -> dict:
+    """Return Arsh's conversation patterns and interests."""
+    owner_id = int(args.get("_owner_id", 1))
+    try:
+        from ..services.prediction import get_pattern_summary, get_user_patterns
+        from ..database.session import SessionLocal
+        db = SessionLocal()
+        try:
+            patterns = get_user_patterns(db, owner_id)
+        finally:
+            db.close()
+        return {
+            "ok": True,
+            "top_topics": patterns.get("top_topics", []),
+            "notable": patterns.get("notable", []),
+            "auto_schedulable": patterns.get("auto_schedulable", []),
+            "summary": get_pattern_summary(owner_id),
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
 def tool_run_retro(args: dict) -> dict:
     """Run Bob's self-awareness retro and return the analysis."""
     import asyncio
@@ -233,6 +255,8 @@ TOOL_DISPATCH: Dict[str, Callable[[dict], dict]] = {
     "agent_team_status": tool_agent_team_status,
     # Self-awareness
     "run_retro": tool_run_retro,
+    # Predictive intelligence
+    "get_patterns": tool_get_patterns,
 }
 
 # ---------------------------------------------------------------------------
