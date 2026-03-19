@@ -396,6 +396,29 @@ ALL_TOOL_SCHEMAS = [
     BROWSER_CLOSE_SCHEMA,
     AGENT_TEAM_RUN_SCHEMA,
     AGENT_TEAM_STATUS_SCHEMA,
+    {
+        "type": "function",
+        "function": {
+            "name": "run_retro",
+            "description": (
+                "Run Bob's self-awareness retro. Collects stats from the last 24h "
+                "(messages, tool usage, failures, corrections, episodes), "
+                "generates an analysis via LLM, saves a SelfImprovementNote, "
+                "and optionally sends the report to Telegram. "
+                "Use when asked to reflect, run retro, or review performance."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "send_to_telegram": {
+                        "type": "boolean",
+                        "description": "Send the retro report to Telegram (default true)",
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
 ]
 
 

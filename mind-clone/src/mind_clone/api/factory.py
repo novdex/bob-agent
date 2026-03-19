@@ -98,6 +98,17 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("Failed to seed proactive check-in job: %s", exc)
 
+    # Seed daily retro scheduled job
+    try:
+        from ..services.retro import ensure_retro_job_seeded
+        seeded = ensure_retro_job_seeded()
+        if seeded:
+            logger.info("Daily retro job seeded (first run at midnight UTC)")
+        else:
+            logger.debug("Daily retro job already exists")
+    except Exception as exc:
+        logger.warning("Failed to seed retro job: %s", exc)
+
     # Start cron supervisor (runs scheduled jobs including proactive check-ins)
     cron_task = None
     try:

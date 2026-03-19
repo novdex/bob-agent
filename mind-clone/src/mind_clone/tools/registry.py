@@ -113,6 +113,33 @@ from .agent_team import (
 
 logger = logging.getLogger("mind_clone.tools")
 
+
+# ---------------------------------------------------------------------------
+# Self-awareness retro tool
+# ---------------------------------------------------------------------------
+
+def tool_run_retro(args: dict) -> dict:
+    """Run Bob's self-awareness retro and return the analysis."""
+    import asyncio
+    owner_id = int(args.get("_owner_id", 1))
+    send_telegram = bool(args.get("send_to_telegram", True))
+    try:
+        from ..services.retro import run_full_retro
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as pool:
+                    future = pool.submit(asyncio.run, run_full_retro(owner_id, send_telegram))
+                    result = future.result(timeout=120)
+            else:
+                result = asyncio.run(run_full_retro(owner_id, send_telegram))
+        except RuntimeError:
+            result = asyncio.run(run_full_retro(owner_id, send_telegram))
+        return result
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:300]}
+
 # ---------------------------------------------------------------------------
 # Static tool dispatch registry (built-in tools)
 # ---------------------------------------------------------------------------
@@ -204,6 +231,8 @@ TOOL_DISPATCH: Dict[str, Callable[[dict], dict]] = {
     # Agent team tools
     "agent_team_run": tool_agent_team_run,
     "agent_team_status": tool_agent_team_status,
+    # Self-awareness
+    "run_retro": tool_run_retro,
 }
 
 # ---------------------------------------------------------------------------
