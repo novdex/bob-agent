@@ -26,7 +26,8 @@ from ..core.state import (
     increment_runtime_state,
     set_runtime_state_value,
 )
-from ..database.models import AutonomousGoal, User
+from ..database.models import User
+from ..agent.goals import AutonomousGoal  # stub model
 from ..database.session import SessionLocal
 from ..utils import truncate_text
 
@@ -271,7 +272,16 @@ async def _autonomy_tick(engine: GoalEngine) -> None:
             increment_runtime_state("autonomy_actions_total")
 
             try:
-                # Run goal in a thread to avoid blocking the event loop
+                # Special case: proactive check-in goal
+                if goal.goal_key == "proactive_checkin":
+                    from ..services.proactive import generate_and_send_checkin
+                    sent = await generate_and_send_checkin(goal.owner_id)
+                    engine.mark_goal_complete(db, goal, "check-in sent" if sent else "skipped")
+                    increment_runtime_state("autonomy_goals_executed")
+                    logger.info("AUTONOMY_CHECKIN_DONE owner=%d sent=%s", goal.owner_id, sent)
+                    continue
+
+                # Normal goal: run via agent loop in thread
                 result = await asyncio.to_thread(_execute_goal_via_llm, goal, engine)
                 engine.mark_goal_complete(db, goal, result)
                 increment_runtime_state("autonomy_goals_executed")
@@ -282,12 +292,12 @@ async def _autonomy_tick(engine: GoalEngine) -> None:
                     len(result or ""),
                 )
 
-                # Decide if worth reporting
+                # Decide if worth reporting — use proactive module
                 worth_it = await asyncio.to_thread(_is_worth_reporting, result)
                 if worth_it:
-                    await _send_proactive_report(
-                        goal.owner_id, goal.title, result,
-                    )
+                    from ..services.proactive import report_goal_completion
+                    await report_goal_completion(goal.owner_id, goal.title, result)
+                    increment_runtime_state("autonomy_reports_sent")
 
             except Exception as e:
                 error_msg = str(e)[:500]
@@ -299,6 +309,12 @@ async def _autonomy_tick(engine: GoalEngine) -> None:
                     goal.goal_key,
                     error_msg,
                 )
+                # Alert Arsh on repeated failures
+                try:
+                    from ..services.proactive import report_error
+                    await report_error(goal.owner_id, f"Goal: {goal.goal_key}", error_msg)
+                except Exception:
+                    pass
 
         set_runtime_state_value(
             "autonomy_last_run_at",
