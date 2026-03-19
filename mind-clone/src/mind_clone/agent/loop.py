@@ -59,90 +59,84 @@ _GAP_HINT_MESSAGE = (
 def _sanitize_tool_pairs(messages: List[dict]) -> List[dict]:
     """Sanitize tool_call / tool_response pairs for LLM API compatibility.
 
-    Ensures:
-    1. Every assistant tool_call has a matching tool_response
-    2. Every tool_response has a matching assistant tool_call
-    3. Assistant messages with tool_calls have reasoning_content
-    4. Empty content is replaced with placeholders
-
-    Args:
-        messages: List of message dicts
-
-    Returns:
-        Sanitized message list with orphaned tool_calls/responses removed
+    Strict two-pass algorithm:
+    1. Build exact mappings: which tool_call IDs exist in assistant messages
+       AND which tool response IDs exist — only keep pairs where BOTH exist.
+    2. Strip assistant tool_calls with no matching responses.
+    3. Strip tool responses with no matching assistant tool_call.
+    4. Fix empty content fields.
     """
     if not messages:
         return []
 
-    # First pass: collect all tool_call_ids from both assistant messages AND tool responses
-    assistant_tool_call_ids = set()
-    tool_response_ids = set()
+    # Pass 1: collect IDs from each side
+    assistant_tool_call_ids: set = set()
+    tool_response_ids: set = set()
 
     for msg in messages:
         if msg.get("role") == "assistant" and msg.get("tool_calls"):
             for tc in msg["tool_calls"]:
-                assistant_tool_call_ids.add(tc.get("id"))
+                tid = tc.get("id")
+                if tid:
+                    assistant_tool_call_ids.add(tid)
         elif msg.get("role") == "tool":
-            tool_response_ids.add(msg.get("tool_call_id"))
+            tid = msg.get("tool_call_id")
+            if tid:
+                tool_response_ids.add(tid)
 
-    # Second pass: filter and sanitize
+    # Only IDs present on BOTH sides are valid
+    valid_ids: set = assistant_tool_call_ids & tool_response_ids
+
+    # Pass 2: filter
     result = []
     for msg in messages:
-        # Handle tool response messages
-        if msg.get("role") == "tool":
-            tool_call_id = msg.get("tool_call_id")
-            # Keep only if there's a matching assistant tool_call
-            if tool_call_id in assistant_tool_call_ids:
+        role = msg.get("role")
+
+        if role == "tool":
+            # Keep only if its ID is in valid_ids
+            if msg.get("tool_call_id") in valid_ids:
                 result.append(msg)
-            # else: drop orphaned tool response
+            # else: orphaned tool response — drop it
             continue
 
-        # Handle assistant messages
-        if msg.get("role") == "assistant":
+        if role == "assistant":
             msg_copy = msg.copy()
             tool_calls = msg_copy.get("tool_calls")
 
-            # If no tool_calls, just handle empty content
             if not tool_calls:
-                if msg_copy.get("content") == "":
+                # No tool calls — just fix empty content
+                if msg_copy.get("content") in ("", None):
                     msg_copy["content"] = "(empty)"
                 result.append(msg_copy)
                 continue
 
-            # Has tool_calls: verify all have matching responses
-            all_matched = all(
-                tc.get("id") in tool_response_ids for tc in tool_calls
-            )
+            # Filter tool_calls to only those with valid (matched) IDs
+            valid_tcs = [tc for tc in tool_calls if tc.get("id") in valid_ids]
 
-            if not all_matched:
-                # Partial or no match: strip tool_calls entirely
+            if not valid_tcs:
+                # No valid tool calls remain — strip tool_calls entirely
                 msg_copy.pop("tool_calls", None)
-                if msg_copy.get("content") == "":
+                if msg_copy.get("content") in ("", None):
                     msg_copy["content"] = "(empty)"
                 result.append(msg_copy)
                 continue
 
-            # All tool_calls matched: keep and sanitize
-            # 1. Add reasoning_content if missing
+            # Some valid tool calls — keep only the matched ones
+            msg_copy["tool_calls"] = valid_tcs
             if "reasoning_content" not in msg_copy:
-                msg_copy["reasoning_content"] = msg_copy.get("content", "")
-
-            # 2. Fix empty content with tool_calls
-            if msg_copy.get("content") == "":
+                msg_copy["reasoning_content"] = msg_copy.get("content", "") or ""
+            if msg_copy.get("content") in ("", None):
                 msg_copy["content"] = "(tool calls)"
-
             result.append(msg_copy)
             continue
 
-        # Non-assistant, non-tool messages (system, user)
-        if msg.get("content") == "" and msg.get("role") in ("user", "system"):
-            # Also sanitize empty content in other roles if needed
+        # system / user — fix empty content
+        if msg.get("content") in ("", None) and role in ("user", "system"):
             msg_copy = msg.copy()
             msg_copy["content"] = "(empty)"
             result.append(msg_copy)
             continue
 
-        # Pass through unchanged
         result.append(msg)
 
     return result

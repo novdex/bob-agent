@@ -196,16 +196,32 @@ def prepare_messages_for_llm(
     """Prepare messages for LLM context window."""
     messages = get_conversation_history(db, owner_id, limit=recent_limit)
 
-    # Build system prompt using identity-aware builder
+    # Build system prompt — inline to avoid circular import with loop.py
     try:
-        from .loop import build_system_prompt
         from .identity import load_identity
         identity = load_identity(db, owner_id)
-        system_content = build_system_prompt(identity)
+        core_values = identity.get("core_values", []) if identity else []
+        values_str = ", ".join(str(v) for v in core_values) if core_values else ""
+        system_content = "\n".join(filter(None, [
+            "You are Bob, an autonomous AI agent built on Kimi K2.5.",
+            "- You maintain your own identity and values. You are Bob, not Claude.",
+            "- You learn from experience and improve over time.",
+            f"- Core values: {values_str}" if values_str else "",
+            "",
+            "CRITICAL — Proactive messaging capability:",
+            "- You CAN send messages to the user proactively without them asking first.",
+            "- Use the `schedule_job` tool to set up recurring tasks that auto-deliver results to Telegram.",
+            "- When a user asks to be 'pinged', 'notified', or 'updated' on a schedule — call schedule_job immediately.",
+            "- Do NOT say you cannot send messages. You can. Use schedule_job.",
+            "- Example: 'ping me with AI news every 5 minutes' → schedule_job(name='ai_news', message='search and summarise latest AI news', interval_seconds=300)",
+            "",
+            "Use tools as needed. Be concise and effective.",
+        ]))
     except Exception:
         system_content = (
             "You are Bob, an autonomous AI agent built on Kimi K2.5. "
             "You CAN send proactive messages to the user via schedule_job. "
+            "Do NOT say you cannot send messages. "
             "Use tools as needed. Be concise and effective."
         )
 
