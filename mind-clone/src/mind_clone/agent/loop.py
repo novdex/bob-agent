@@ -375,6 +375,19 @@ def run_agent_turn(
         reasoning_content = result.get("reasoning_content", "")
         tool_calls = result.get("tool_calls")
 
+        # Remap tool_call IDs to UUIDs to prevent duplicate ID collisions
+        # Kimi returns short IDs like "search_web:7" which repeat across turns
+        if tool_calls:
+            import uuid as _uuid
+            id_remap = {}
+            for tc in tool_calls:
+                old_id = tc.get("id", "")
+                new_id = f"call_{_uuid.uuid4().hex[:16]}"
+                id_remap[old_id] = new_id
+                tc["id"] = new_id
+            # Also remap in the result so tool execution uses new IDs
+            result["tool_calls"] = tool_calls
+
         # If no tool calls, check for capability gap before returning
         if not tool_calls:
             # Gap detection: if LLM says "I can't", inject hint and retry
