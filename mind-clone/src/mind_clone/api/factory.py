@@ -76,10 +76,13 @@ async def lifespan(app: FastAPI):
     try:
         from ..services.telegram.dispatch import command_queue_worker_loop
         from ..core.queue import command_queue_enabled, COMMAND_QUEUE_WORKER_COUNT
+        from ..core.state import COMMAND_QUEUE_WORKER_TASKS
         if command_queue_enabled():
             for worker_id in range(COMMAND_QUEUE_WORKER_COUNT):
                 task = asyncio.create_task(command_queue_worker_loop(worker_id))
                 queue_worker_tasks.append(task)
+                # Also register in the global dict so active_command_queue_worker_count works
+                COMMAND_QUEUE_WORKER_TASKS[worker_id] = task
             logger.info("Started %d command queue workers", COMMAND_QUEUE_WORKER_COUNT)
     except Exception as exc:
         logger.warning("Failed to start command queue workers: %s", exc)
@@ -87,13 +90,17 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown queue workers
-    for task in queue_worker_tasks:
-        if not task.done():
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
+    try:
+        from ..core.queue import cancel_command_queue_workers
+        await cancel_command_queue_workers()
+    except Exception:
+        for task in queue_worker_tasks:
+            if not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
 
     # Shutdown telegram
     if polling_task and not polling_task.done():
