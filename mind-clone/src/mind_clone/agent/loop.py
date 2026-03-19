@@ -344,6 +344,13 @@ def run_agent_turn(
     except Exception as _pred_err:
         logger.debug("PREDICTIVE_INJECT_SKIP: %s", str(_pred_err)[:100])
 
+    # Inject long-term memory recall (self-improvement notes, research, lessons)
+    try:
+        from .recall import inject_recall_context
+        inject_recall_context(db, owner_id, user_message, messages)
+    except Exception as _recall_err:
+        logger.debug("RECALL_INJECT_SKIP: %s", str(_recall_err)[:100])
+
     # Inject relevant episodic memories (past similar situations)
     try:
         from .episodes import recall_similar_episodes

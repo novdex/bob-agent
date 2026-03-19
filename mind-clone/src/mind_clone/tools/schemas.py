@@ -453,6 +453,18 @@ ALL_TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "self_improve",
+            "description": (
+                "Attempt to fix Bob's own code based on the top open self-improvement opportunity. "
+                "Bob reads his improvement notes, finds the relevant code, patches it, runs tests, "
+                "and commits the fix. Use when asked to improve yourself or fix known issues."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "get_patterns",
             "description": (
                 "Get Arsh's conversation patterns — recurring topics, interests, and what he "

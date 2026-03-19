@@ -118,6 +118,15 @@ logger = logging.getLogger("mind_clone.tools")
 # Self-awareness retro tool
 # ---------------------------------------------------------------------------
 
+def tool_self_improve(args: dict) -> dict:
+    """Tool: Bob fixes his top self-improvement opportunity using his own codebase tools."""
+    try:
+        from ..services.self_improve import tool_self_improve as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
 def tool_get_patterns(args: dict) -> dict:
     """Return Arsh's conversation patterns and interests."""
     owner_id = int(args.get("_owner_id", 1))
@@ -257,6 +266,8 @@ TOOL_DISPATCH: Dict[str, Callable[[dict], dict]] = {
     "run_retro": tool_run_retro,
     # Predictive intelligence
     "get_patterns": tool_get_patterns,
+    # Self-improvement
+    "self_improve": tool_self_improve,
 }
 
 # ---------------------------------------------------------------------------
@@ -325,7 +336,7 @@ TOOL_CATEGORIES: Dict[str, set] = {
         "agent_team_run", "agent_team_status",
     },
     "self_awareness": {
-        "run_retro", "get_patterns",
+        "run_retro", "get_patterns", "self_improve",
     },
 }
 
