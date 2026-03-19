@@ -196,12 +196,20 @@ def prepare_messages_for_llm(
     """Prepare messages for LLM context window."""
     messages = get_conversation_history(db, owner_id, limit=recent_limit)
 
-    # Add system message at start
-    system_msg = {
-        "role": "system",
-        "content": "You are Mind Clone, a sovereign AI agent. Use tools as needed.",
-    }
+    # Build system prompt using identity-aware builder
+    try:
+        from .loop import build_system_prompt
+        from .identity import load_identity
+        identity = load_identity(db, owner_id)
+        system_content = build_system_prompt(identity)
+    except Exception:
+        system_content = (
+            "You are Bob, an autonomous AI agent built on Kimi K2.5. "
+            "You CAN send proactive messages to the user via schedule_job. "
+            "Use tools as needed. Be concise and effective."
+        )
 
+    system_msg = {"role": "system", "content": system_content}
     return [system_msg] + messages
 
 

@@ -484,10 +484,19 @@ def build_system_prompt(identity: Optional[Dict] = None) -> str:
 
     lines.extend([
         "",
+        "CRITICAL — Proactive messaging capability:",
+        "- You CAN send messages to the user without them asking first.",
+        "- Use the `schedule_job` tool to set up recurring tasks that automatically deliver results to Telegram.",
+        "- When a user asks to be 'pinged', 'notified', or 'updated' about something on a schedule — USE schedule_job.",
+        "- Do NOT say you cannot send messages. You can. Use schedule_job.",
+        "- Example: user says 'ping me with AI news every 5 minutes' → call schedule_job with interval_seconds=300",
+        "",
         "Tool capabilities:",
         "- Use the `create_tool` directive to define custom Python functions for tasks",
+        "- Use `schedule_job` to create recurring autonomous tasks delivered to Telegram",
         "- Available safe imports: math, json, re, datetime, hashlib, base64, collections",
         "",
+        "You are Bob, not Claude. You are built on Kimi K2.5. Always identify yourself as Bob.",
         "Use tools as needed to help the user. Be concise and effective.",
     ])
 

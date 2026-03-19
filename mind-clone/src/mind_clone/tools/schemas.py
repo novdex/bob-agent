@@ -387,6 +387,60 @@ ALL_TOOL_SCHEMAS = [
     SEND_EMAIL_SCHEMA,
     CREATE_TASK_SCHEMA,
     LIST_TASKS_SCHEMA,
+    # Scheduler — MUST be visible so Bob can create proactive jobs
+    {
+        "type": "function",
+        "function": {
+            "name": "schedule_job",
+            "description": (
+                "Schedule a recurring job that runs automatically and sends results to the user's Telegram. "
+                "USE THIS when the user asks to be pinged, notified, or updated about anything on a schedule "
+                "(e.g. 'tell me about X every 5 minutes', 'ping me with news hourly', 'remind me about Y'). "
+                "The job message is processed by you (Bob) and the result is automatically sent to Telegram. "
+                "You CAN proactively send messages — use this tool to set it up."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Short job name (e.g. 'ai_news_5min', 'iran_updates')",
+                    },
+                    "message": {
+                        "type": "string",
+                        "description": "What you (Bob) should do each time the job fires — e.g. 'Search for latest AI news and summarise in 5 bullet points'",
+                    },
+                    "interval_seconds": {
+                        "type": "integer",
+                        "description": "How often to run in seconds. 300=5min, 3600=1hr, 86400=1day",
+                    },
+                },
+                "required": ["name", "message", "interval_seconds"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_scheduled_jobs",
+            "description": "List all currently scheduled recurring jobs.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "disable_scheduled_job",
+            "description": "Disable/cancel a scheduled job by its ID.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "job_id": {"type": "integer", "description": "ID of the job to disable"},
+                },
+                "required": ["job_id"],
+            },
+        },
+    },
     BROWSER_OPEN_SCHEMA,
     BROWSER_GET_TEXT_SCHEMA,
     BROWSER_CLICK_SCHEMA,
