@@ -118,34 +118,33 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("Failed to start cron supervisor: %s", exc)
 
-    # Start task worker (handles long-running background tasks)
-    task_worker_task = None
+    # Start task worker in a thread (it's a sync blocking loop)
+    import threading as _threading
+    _task_worker_thread = None
     try:
         from ..core.tasks import task_worker_loop
         from ..core.state import RUNTIME_STATE
-        task_worker_task = asyncio.create_task(task_worker_loop())
+        _task_worker_thread = _threading.Thread(
+            target=task_worker_loop, daemon=True, name="task-worker"
+        )
+        _task_worker_thread.start()
         RUNTIME_STATE["worker_alive"] = True
-        logger.info("Task worker started")
+        logger.info("Task worker thread started")
     except Exception as exc:
         logger.warning("Failed to start task worker: %s", exc)
 
-    # Run db health check so db_healthy reflects reality
+    # Run db health check in thread (sync SQLAlchemy - don't block event loop)
     try:
         from ..services.telegram.runtime import check_db_liveness
-        ok, err = check_db_liveness()
-        logger.info("DB health check: %s%s", "OK" if ok else "FAIL", f" ({err})" if err else "")
+        import asyncio as _asyncio
+        ok, err = await _asyncio.get_event_loop().run_in_executor(None, check_db_liveness)
+        logger.info("DB health: %s%s", "OK" if ok else "FAIL", f" ({err})" if err else "")
     except Exception as exc:
         logger.warning("DB health check failed: %s", exc)
 
     yield
 
-    # Shutdown task worker
-    if task_worker_task and not task_worker_task.done():
-        task_worker_task.cancel()
-        try:
-            await task_worker_task
-        except asyncio.CancelledError:
-            pass
+    # Mark worker stopped (thread is daemon so it dies with process)
     try:
         from ..core.state import RUNTIME_STATE
         RUNTIME_STATE["worker_alive"] = False
