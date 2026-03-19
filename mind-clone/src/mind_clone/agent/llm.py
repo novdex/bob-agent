@@ -33,30 +33,37 @@ def _get_circuit_breaker(provider: str) -> CircuitBreaker:
 
 
 def _build_failover_chain() -> List[Dict[str, Any]]:
-    """Build ordered list of LLM providers from configured API keys."""
+    """Build ordered list of LLM providers from configured API keys.
+
+    HARD RULE: Kimi K2.5 is the ONLY permitted provider for Bob.
+    Anthropic is explicitly excluded — the key may exist in env but
+    Bob must never fall back to it (credits not available / not permitted).
+    """
     chain: List[Dict[str, Any]] = []
     kimi_key = settings.kimi_api_key
     if kimi_key and kimi_key != "YOUR_KIMI_API_KEY_HERE":
         chain.append({"name": "kimi", "base_url": settings.kimi_base_url,
                        "api_key": kimi_key, "model": settings.kimi_model,
                        "format": "openai", "timeout": 90})
+
+    # NOTE: Anthropic is intentionally excluded regardless of env vars.
+    # DeepSeek and OpenAI only added if explicitly configured.
     dsk = getattr(settings, "deepseek_api_key", "")
-    if dsk:
+    if dsk and dsk not in ("", "YOUR_DEEPSEEK_KEY_HERE"):
         chain.append({"name": "deepseek", "base_url": "https://api.deepseek.com",
                        "api_key": dsk, "model": "deepseek-chat",
                        "format": "openai", "timeout": 90})
     oak = getattr(settings, "openai_api_key", "")
-    if oak:
+    if oak and oak not in ("", "YOUR_OPENAI_KEY_HERE"):
         chain.append({"name": "openai", "base_url": "https://api.openai.com/v1",
                        "api_key": oak, "model": "gpt-4o",
                        "format": "openai", "timeout": 60})
-    aak = getattr(settings, "anthropic_api_key", "")
-    if aak:
-        chain.append({"name": "anthropic", "base_url": "https://api.anthropic.com",
-                       "api_key": aak, "model": "claude-sonnet-4-20250514",
-                       "format": "anthropic", "timeout": 60})
-    logger.info("LLM_FAILOVER_CHAIN providers=%d names=%s",
-                len(chain), [p["name"] for p in chain])
+
+    if not chain:
+        logger.error("LLM_FAILOVER_CHAIN_EMPTY — no valid providers configured")
+    else:
+        logger.info("LLM_FAILOVER_CHAIN providers=%d names=%s",
+                    len(chain), [p["name"] for p in chain])
     return chain
 
 
