@@ -87,6 +87,17 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("Failed to start command queue workers: %s", exc)
 
+    # Seed proactive check-in scheduled job
+    try:
+        from ..services.proactive import ensure_checkin_job_seeded
+        seeded = ensure_checkin_job_seeded()
+        if seeded:
+            logger.info("Proactive check-in job seeded (first run in 1 hour)")
+        else:
+            logger.debug("Proactive check-in job already exists")
+    except Exception as exc:
+        logger.warning("Failed to seed proactive check-in job: %s", exc)
+
     yield
 
     # Shutdown queue workers
