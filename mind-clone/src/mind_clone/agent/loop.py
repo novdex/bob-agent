@@ -322,6 +322,18 @@ def run_agent_turn(
     messages = prepare_messages_for_llm(db, owner_id)
     messages = _sanitize_tool_pairs(messages)
 
+    # Select and inject reasoning strategy
+    try:
+        from .reasoning import select_reasoning_strategy, build_reasoning_prefix, track_reasoning_metrics
+        strategy = select_reasoning_strategy(user_message)
+        prefix = build_reasoning_prefix(strategy, user_message)
+        if prefix:
+            messages.append({"role": "system", "content": prefix})
+            track_reasoning_metrics(strategy)
+            logger.debug("REASONING_STRATEGY strategy=%s", strategy)
+    except Exception as _r_err:
+        logger.debug("REASONING_INJECT_SKIP: %s", str(_r_err)[:100])
+
     # Inject matching skill playbooks before LLM call
     _inject_matching_skills(db, owner_id, user_message, messages)
 
@@ -331,6 +343,30 @@ def run_agent_turn(
         inject_predictive_context(db, owner_id, user_message, messages)
     except Exception as _pred_err:
         logger.debug("PREDICTIVE_INJECT_SKIP: %s", str(_pred_err)[:100])
+
+    # Inject relevant episodic memories (past similar situations)
+    try:
+        from .episodes import recall_similar_episodes
+        episodes = recall_similar_episodes(owner_id, user_message, limit=3)
+        if episodes:
+            ep_lines = []
+            for ep in episodes:
+                outcome_emoji = "✅" if ep["outcome"] == "success" else "❌" if ep["outcome"] == "failure" else "⚠️"
+                ep_lines.append(
+                    f"{outcome_emoji} Situation: {ep['situation'][:120]} | "
+                    f"Action: {ep['action_taken'][:120]} | "
+                    f"Outcome: {ep['outcome']}"
+                )
+            messages.append({
+                "role": "system",
+                "content": (
+                    "[EPISODIC MEMORY] Similar past situations you've handled:\n" +
+                    "\n".join(ep_lines) +
+                    "\nUse this context to improve your response."
+                ),
+            })
+    except Exception as _ep_err:
+        logger.debug("EPISODE_INJECT_SKIP: %s", str(_ep_err)[:100])
 
     # Get tool definitions (built-in + custom)
     tools = effective_tool_definitions(owner_id=owner_id)
@@ -404,13 +440,26 @@ def run_agent_turn(
 
             save_assistant_message(db, owner_id, content)
 
-            # Update pattern tracker after successful turn (non-blocking)
+            # Background tasks after successful turn (non-blocking)
+            import threading
+
+            # 1. Update pattern tracker
             try:
                 from ..services.prediction import update_patterns_after_turn
-                import threading
                 threading.Thread(
                     target=update_patterns_after_turn,
                     args=(owner_id, user_message),
+                    daemon=True,
+                ).start()
+            except Exception:
+                pass
+
+            # 2. Record episodic memory
+            try:
+                from .episodes import record_episode_from_turn
+                threading.Thread(
+                    target=record_episode_from_turn,
+                    args=(owner_id, user_message, content, messages),
                     daemon=True,
                 ).start()
             except Exception:

@@ -324,6 +324,9 @@ TOOL_CATEGORIES: Dict[str, set] = {
     "agent_team": {
         "agent_team_run", "agent_team_status",
     },
+    "self_awareness": {
+        "run_retro", "get_patterns",
+    },
 }
 
 # Intent keywords that map user messages to tool categories

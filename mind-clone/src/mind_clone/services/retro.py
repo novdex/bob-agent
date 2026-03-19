@@ -135,17 +135,24 @@ def collect_stats(db: Session, owner_id: int, hours: int = 24) -> Dict[str, Any]
         .count()
     )
 
-    # Episodic memories (outcomes)
-    episodes = (
-        db.query(EpisodicMemory)
-        .filter(
-            EpisodicMemory.owner_id == owner_id,
-            EpisodicMemory.created_at >= since,
+    # Episodic memories (outcomes) — from our new episodes engine
+    try:
+        from ..agent.episodes import get_episode_stats
+        ep_stats = get_episode_stats(owner_id)
+        success_episodes = ep_stats.get("success", 0)
+        fail_episodes = ep_stats.get("failure", 0)
+        episode_success_rate = ep_stats.get("success_rate", 0)
+        total_episodes = ep_stats.get("total", 0)
+    except Exception:
+        episodes = (
+            db.query(EpisodicMemory)
+            .filter(EpisodicMemory.owner_id == owner_id, EpisodicMemory.created_at >= since)
+            .all()
         )
-        .all()
-    )
-    success_episodes = sum(1 for e in episodes if e.outcome == "success")
-    fail_episodes = sum(1 for e in episodes if e.outcome == "failure")
+        success_episodes = sum(1 for e in episodes if e.outcome == "success")
+        fail_episodes = sum(1 for e in episodes if e.outcome == "failure")
+        episode_success_rate = 0
+        total_episodes = len(episodes)
 
     # User corrections (messages containing correction phrases)
     recent_user_msgs = (
