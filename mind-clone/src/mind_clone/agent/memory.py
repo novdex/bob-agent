@@ -55,6 +55,11 @@ def get_conversation_history(
                 msg["tool_calls"] = json.loads(row.tool_calls_json)
             except json.JSONDecodeError:
                 pass
+        # Kimi K2.5 requires reasoning_content on every assistant message
+        # with tool_calls — inject it here at load time so it's never missing
+        if role == "assistant" and msg.get("tool_calls"):
+            if "reasoning_content" not in msg:
+                msg["reasoning_content"] = content or ""
         messages.append(msg)
 
     return messages

@@ -164,6 +164,10 @@ def _sanitize_tool_pairs(messages: List[dict]) -> List[dict]:
                     msg_copy["content"] = "(empty)"
             else:
                 msg_copy["tool_calls"] = matched_tcs
+                # CRITICAL: Kimi requires reasoning_content on EVERY assistant
+                # message that has tool_calls — ensure it's always present
+                if "reasoning_content" not in msg_copy:
+                    msg_copy["reasoning_content"] = msg_copy.get("content", "") or ""
             final.append(msg_copy)
         else:
             final.append(msg)
