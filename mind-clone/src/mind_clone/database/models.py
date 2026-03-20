@@ -332,6 +332,9 @@ class SelfImprovementNote(Base):
     evidence_json = Column(Text, nullable=False, default="{}")
     priority = Column(String, index=True, nullable=False, default="medium")
     status = Column(String, index=True, nullable=False, default="open")
+    importance = Column(Float, nullable=False, default=1.0)   # Ebbinghaus weight
+    recall_count = Column(Integer, nullable=False, default=0)
+    last_recalled_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
@@ -368,6 +371,9 @@ class EpisodicMemory(Base):
     tools_used_json = Column(Text, nullable=False, default="[]")
     source_type = Column(String, index=True, nullable=False, default="chat")
     source_ref = Column(String, nullable=True)
+    importance = Column(Float, nullable=False, default=1.0)   # Ebbinghaus weight (0.0–1.0)
+    recall_count = Column(Integer, nullable=False, default=0)  # how many times recalled
+    last_recalled_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 

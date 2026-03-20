@@ -191,6 +191,16 @@ def tool_memory_graph_search(args: dict) -> dict:
         return {"ok": False, "error": str(e)[:200]}
 
 
+def tool_memory_decay(args: dict) -> dict:
+    """Tool: Run Ebbinghaus memory decay and pruning cycle."""
+    owner_id = int(args.get("_owner_id", 1))
+    try:
+        from ..services.ebbinghaus import run_daily_memory_maintenance
+        return run_daily_memory_maintenance(owner_id)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
 def tool_optimise_prompts(args: dict) -> dict:
     """Tool: Run DSPy-style prompt optimisation to improve Bob's tool usage hints."""
     try:
@@ -373,6 +383,8 @@ TOOL_DISPATCH: Dict[str, Callable[[dict], dict]] = {
     "self_improve": tool_self_improve,
     # Karpathy experiment loop
     "run_experiment": tool_run_experiment,
+    # Ebbinghaus memory decay
+    "memory_decay": tool_memory_decay,
     # DSPy prompt optimisation
     "optimise_prompts": tool_optimise_prompts,
     # Sub-agent isolation (CORPGEN)
@@ -457,7 +469,7 @@ TOOL_CATEGORIES: Dict[str, set] = {
     },
     "self_awareness": {
         "run_retro", "get_patterns", "self_improve", "run_experiment",
-        "optimise_prompts",
+        "optimise_prompts", "memory_decay",
     },
     "agent_tasks": {
         "run_isolated_task",

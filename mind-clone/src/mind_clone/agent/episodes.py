@@ -265,10 +265,19 @@ def recall_similar_episodes(
                     "tools_used": json.loads(ep.tools_used_json or "[]"),
                     "created_at": ep.created_at.isoformat() if ep.created_at else None,
                     "similarity": round(score, 2),
+                    "id": ep.id,
+                    "importance": float(ep.importance or 1.0),
                 }
                 for score, ep in scored[:limit]
             ]
         finally:
+            # Boost importance of recalled episodes (Ebbinghaus spaced repetition)
+            try:
+                from ..services.ebbinghaus import boost_memory
+                for score, ep in scored[:limit]:
+                    boost_memory(db, "episodic", ep.id)
+            except Exception:
+                pass
             db.close()
     except Exception as e:
         logger.warning("EPISODE_RECALL_FAIL: %s", str(e)[:200])

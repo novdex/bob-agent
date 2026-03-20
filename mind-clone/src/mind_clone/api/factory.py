@@ -109,6 +109,30 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("Failed to seed retro job: %s", exc)
 
+    # Seed daily Ebbinghaus memory maintenance job
+    try:
+        from ..services.scheduler import create_job
+        from ..database.session import SessionLocal as _SL2
+        from ..database.models import ScheduledJob as _SJ
+        _db2 = _SL2()
+        try:
+            _exists = _db2.query(_SJ).filter(_SJ.name == "ebbinghaus_decay", _SJ.owner_id == 1).first()
+            if not _exists:
+                create_job(
+                    _db2, owner_id=1,
+                    name="ebbinghaus_decay",
+                    message="Run Ebbinghaus memory decay and pruning. Call: from mind_clone.services.ebbinghaus import run_daily_memory_maintenance; run_daily_memory_maintenance(1)",
+                    interval_seconds=86400,
+                    schedule="03:00",
+                )
+                logger.info("Ebbinghaus daily decay job seeded")
+        except Exception:
+            pass
+        finally:
+            _db2.close()
+    except Exception as exc:
+        logger.warning("Failed to seed Ebbinghaus job: %s", exc)
+
     # Seed nightly experiment job (Karpathy-style self-improvement loop)
     try:
         from ..services.auto_research import ensure_nightly_experiment_job

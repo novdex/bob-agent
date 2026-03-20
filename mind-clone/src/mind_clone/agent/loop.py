@@ -519,6 +519,13 @@ def run_agent_turn(
             except Exception:
                 pass
 
+            # 4. Constitutional AI: self-critique before sending
+            try:
+                from ..services.constitutional import maybe_review
+                content = maybe_review(user_message, content)
+            except Exception:
+                pass
+
             return content
 
         # Save assistant message with tool calls

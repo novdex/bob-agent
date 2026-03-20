@@ -662,6 +662,14 @@ ALL_TOOL_SCHEMAS.extend([
     {
         "type": "function",
         "function": {
+            "name": "memory_decay",
+            "description": "Run Ebbinghaus memory decay: fades unimportant old memories, boosts recalled ones, prunes noise. Run daily for healthy memory hygiene.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "optimise_prompts",
             "description": "Run DSPy-style automatic prompt optimisation. Analyses which tools are failing and rewrites their usage hints to improve success rates. Run weekly or when tools seem to be underperforming.",
             "parameters": {"type": "object", "properties": {}, "required": []},
