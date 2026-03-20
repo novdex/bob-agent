@@ -494,6 +494,13 @@ def run_agent_turn(
             except Exception:
                 pass
 
+            # 3. Reflexion: reflect on task-level failures
+            try:
+                from ..services.reflexion import reflect_on_task_failure
+                reflect_on_task_failure(owner_id, user_message, content)
+            except Exception:
+                pass
+
             return content
 
         # Save assistant message with tool calls
