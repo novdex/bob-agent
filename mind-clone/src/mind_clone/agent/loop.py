@@ -355,6 +355,27 @@ def run_agent_turn(
     except Exception as _recall_err:
         logger.debug("RECALL_INJECT_SKIP: %s", str(_recall_err)[:100])
 
+    # User profile injection
+    try:
+        from ..services.user_profile import inject_profile_context
+        inject_profile_context(owner_id, messages)
+    except Exception as _up_err:
+        logger.debug("PROFILE_INJECT_SKIP: %s", str(_up_err)[:80])
+
+    # World model injection
+    try:
+        from ..services.world_model import inject_world_context
+        inject_world_context(owner_id, messages)
+    except Exception as _wm_err:
+        logger.debug("WORLD_MODEL_SKIP: %s", str(_wm_err)[:80])
+
+    # JitRL — inject high-value past experiences as few-shot examples
+    try:
+        from ..services.jit_rl import inject_jit_examples
+        inject_jit_examples(owner_id, user_message, messages)
+    except Exception as _jit_err:
+        logger.debug("JITRL_SKIP: %s", str(_jit_err)[:80])
+
     # Multi-turn planning: generate execution plan before acting on complex tasks
     try:
         from ..services.planner import inject_plan_context
@@ -408,6 +429,13 @@ def run_agent_turn(
             })
     except Exception as _ep_err:
         logger.debug("EPISODE_INJECT_SKIP: %s", str(_ep_err)[:100])
+
+    # Adaptive context compression — keep context lean
+    try:
+        from ..services.context_compressor import compress_context
+        messages = compress_context(messages)
+    except Exception as _cc_err:
+        logger.debug("CONTEXT_COMPRESS_SKIP: %s", str(_cc_err)[:80])
 
     # Get tool definitions (built-in + custom)
     tools = effective_tool_definitions(owner_id=owner_id)
@@ -540,10 +568,29 @@ def run_agent_turn(
             except Exception:
                 pass
 
-            # 5. Co-evolving critic (runs after constitutional, independent check)
+            # 5. Co-evolving critic
             try:
                 from ..services.co_critic import co_critique
                 content, _ = co_critique(user_message, content)
+            except Exception:
+                pass
+
+            # 6. Self-play improvement for opinion/evaluation questions
+            try:
+                from ..services.self_play import self_play_improve
+                content = self_play_improve(user_message, content)
+            except Exception:
+                pass
+
+            # 7. Background: update user profile + world model
+            try:
+                from ..services.user_profile import update_profile_from_turn
+                update_profile_from_turn(owner_id, user_message, content)
+            except Exception:
+                pass
+            try:
+                from ..services.world_model import update_world_from_turn
+                update_world_from_turn(owner_id, user_message, content)
             except Exception:
                 pass
 
@@ -616,6 +663,13 @@ def run_agent_turn(
 
         if tool_loops > MAX_TOOL_LOOPS:
             break
+
+    # ReAct+Reflect after multi-step tool use
+    try:
+        from ..services.react_reflect import reflect_after_task
+        reflect_after_task(owner_id, user_message, "max loops reached", [])
+    except Exception:
+        pass
 
     # Max loops reached
     final_msg = "Maximum tool iterations reached. Task may be incomplete."

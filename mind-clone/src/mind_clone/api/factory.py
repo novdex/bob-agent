@@ -109,6 +109,19 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("Failed to seed retro job: %s", exc)
 
+    # Seed morning briefing job (7am UTC daily)
+    try:
+        from ..services.autonomous_research import ensure_morning_briefing_job
+        from ..database.session import SessionLocal as _SL3
+        _db3 = _SL3()
+        try:
+            ensure_morning_briefing_job(_db3, owner_id=1)
+            logger.info("Morning briefing job ensured")
+        finally:
+            _db3.close()
+    except Exception as exc:
+        logger.warning("Failed to seed morning briefing: %s", exc)
+
     # Seed daily Ebbinghaus memory maintenance job
     try:
         from ..services.scheduler import create_job

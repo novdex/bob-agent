@@ -191,6 +191,76 @@ def tool_memory_graph_search(args: dict) -> dict:
         return {"ok": False, "error": str(e)[:200]}
 
 
+def tool_get_user_profile(args: dict) -> dict:
+    try:
+        from ..services.user_profile import tool_get_user_profile as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_update_user_profile(args: dict) -> dict:
+    try:
+        from ..services.user_profile import tool_update_user_profile as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_run_briefing(args: dict) -> dict:
+    try:
+        from ..services.autonomous_research import tool_run_briefing as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_run_self_tests(args: dict) -> dict:
+    try:
+        from ..services.self_tester import tool_run_self_tests as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_generate_tests(args: dict) -> dict:
+    try:
+        from ..services.self_tester import tool_generate_tests as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_get_world_model(args: dict) -> dict:
+    try:
+        from ..services.world_model import tool_get_world_model as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_update_world(args: dict) -> dict:
+    try:
+        from ..services.world_model import tool_update_world as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_meta_research(args: dict) -> dict:
+    try:
+        from ..services.meta_tools import meta_research_and_save
+        return meta_research_and_save(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_meta_report(args: dict) -> dict:
+    try:
+        from ..services.meta_tools import meta_search_and_report
+        return meta_search_and_report(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_meta_run(args: dict) -> dict:
+    try:
+        from ..services.meta_tools import meta_run_and_check
+        return meta_run_and_check(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
 def tool_research_github(args: dict) -> dict:
     """Tool: Search GitHub for top repos on a topic, extract insights, save as ResearchNotes."""
     try:
@@ -421,6 +491,21 @@ TOOL_DISPATCH: Dict[str, Callable[[dict], dict]] = {
     "run_experiment": tool_run_experiment,
     # Ebbinghaus memory decay
     "memory_decay": tool_memory_decay,
+    # User profiling
+    "get_user_profile": tool_get_user_profile,
+    "update_user_profile": tool_update_user_profile,
+    # Autonomous research briefing
+    "run_briefing": tool_run_briefing,
+    # Self-testing
+    "run_self_tests": tool_run_self_tests,
+    "generate_tests": tool_generate_tests,
+    # World model
+    "get_world_model": tool_get_world_model,
+    "update_world": tool_update_world,
+    # Meta-tools
+    "meta_research": tool_meta_research,
+    "meta_report": tool_meta_report,
+    "meta_run": tool_meta_run,
     # GitHub research
     "research_github": tool_research_github,
     # On-the-fly tool creation
@@ -516,7 +601,13 @@ TOOL_CATEGORIES: Dict[str, set] = {
         "optimise_prompts", "memory_decay", "evolve_critic", "scan_triggers",
     },
     "research": {
-        "research_github", "forge_tool",
+        "research_github", "forge_tool", "meta_research", "meta_report", "run_briefing",
+    },
+    "user": {
+        "get_user_profile", "update_user_profile", "get_world_model", "update_world",
+    },
+    "testing": {
+        "run_self_tests", "generate_tests", "meta_run",
     },
     "agent_tasks": {
         "run_isolated_task",

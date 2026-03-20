@@ -659,6 +659,19 @@ ALL_TOOL_SCHEMAS.extend(_MEMORY_GRAPH_SCHEMAS)
 
 # DSPy + CORPGEN schemas
 ALL_TOOL_SCHEMAS.extend([
+    {"type":"function","function":{"name":"get_user_profile","description":"Get the current user profile (interests, style, projects).","parameters":{"type":"object","properties":{},"required":[]}}},
+    {"type":"function","function":{"name":"update_user_profile","description":"Update a field in the user profile.","parameters":{"type":"object","properties":{"field":{"type":"string"},"value":{}},"required":["field","value"]}}},
+    {"type":"function","function":{"name":"run_briefing","description":"Run the morning research briefing now — research user interests and send to Telegram.","parameters":{"type":"object","properties":{},"required":[]}}},
+    {"type":"function","function":{"name":"run_self_tests","description":"Run Bob's test suite and return pass/fail results.","parameters":{"type":"object","properties":{"test_file":{"type":"string","description":"Optional specific test file path"}},"required":[]}}},
+    {"type":"function","function":{"name":"generate_tests","description":"Generate pytest tests for a service file.","parameters":{"type":"object","properties":{"service_name":{"type":"string"},"service_file":{"type":"string"}},"required":["service_name","service_file"]}}},
+    {"type":"function","function":{"name":"get_world_model","description":"Get Bob's current world model (projects, events, predictions).","parameters":{"type":"object","properties":{},"required":[]}}},
+    {"type":"function","function":{"name":"update_world","description":"Update a field in Bob's world model.","parameters":{"type":"object","properties":{"section":{"type":"string"},"key":{"type":"string"},"value":{}},"required":["section","key","value"]}}},
+    {"type":"function","function":{"name":"meta_research","description":"Meta-tool: search + read pages + summarise + save as ResearchNote in one call.","parameters":{"type":"object","properties":{"topic":{"type":"string"}},"required":["topic"]}}},
+    {"type":"function","function":{"name":"meta_report","description":"Meta-tool: multi-source search + compile into structured report in one call.","parameters":{"type":"object","properties":{"query":{"type":"string"}},"required":["query"]}}},
+    {"type":"function","function":{"name":"meta_run","description":"Meta-tool: run shell command + check output + return structured result.","parameters":{"type":"object","properties":{"command":{"type":"string"},"expect_success":{"type":"boolean","default":True}},"required":["command"]}}},
+])
+
+ALL_TOOL_SCHEMAS.extend([
     {
         "type": "function",
         "function": {
