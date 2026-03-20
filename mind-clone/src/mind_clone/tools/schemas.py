@@ -657,6 +657,34 @@ _MEMORY_GRAPH_SCHEMAS = [
 ]
 ALL_TOOL_SCHEMAS.extend(_MEMORY_GRAPH_SCHEMAS)
 
+# DSPy + CORPGEN schemas
+ALL_TOOL_SCHEMAS.extend([
+    {
+        "type": "function",
+        "function": {
+            "name": "optimise_prompts",
+            "description": "Run DSPy-style automatic prompt optimisation. Analyses which tools are failing and rewrites their usage hints to improve success rates. Run weekly or when tools seem to be underperforming.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "run_isolated_task",
+            "description": "Run a specific sub-task in a completely isolated context to prevent memory contamination with other tasks. Use when handling complex multi-part requests.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "task": {"type": "string", "description": "The specific sub-task to execute in isolation"},
+                    "context": {"type": "string", "description": "Essential context from the parent task (keep minimal)"},
+                    "tools_allowed": {"type": "array", "items": {"type": "string"}, "description": "Optional list of tool names to allow (defaults to all)"},
+                },
+                "required": ["task"],
+            },
+        },
+    },
+])
+
 # Karpathy experiment loop schema
 ALL_TOOL_SCHEMAS.append({
     "type": "function",

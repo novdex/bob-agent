@@ -362,6 +362,15 @@ def run_agent_turn(
     except Exception as _reflex_err:
         logger.debug("REFLEXION_INJECT_SKIP: %s", str(_reflex_err)[:100])
 
+    # Inject optimised tool hints (DSPy-style, only if any exist)
+    try:
+        from ..services.prompt_optimizer import build_tool_hints_block
+        hints_block = build_tool_hints_block(db, owner_id)
+        if hints_block:
+            messages.append({"role": "system", "content": hints_block})
+    except Exception as _dspy_err:
+        logger.debug("DSPY_HINTS_SKIP: %s", str(_dspy_err)[:80])
+
     # Inject relevant episodic memories (past similar situations)
     try:
         from .episodes import recall_similar_episodes

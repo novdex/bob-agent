@@ -191,6 +191,24 @@ def tool_memory_graph_search(args: dict) -> dict:
         return {"ok": False, "error": str(e)[:200]}
 
 
+def tool_optimise_prompts(args: dict) -> dict:
+    """Tool: Run DSPy-style prompt optimisation to improve Bob's tool usage hints."""
+    try:
+        from ..services.prompt_optimizer import tool_optimise_prompts as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def tool_run_isolated_task(args: dict) -> dict:
+    """Tool: Run a sub-task in an isolated context to prevent memory contamination."""
+    try:
+        from ..services.task_isolator import tool_run_isolated_task as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
 def tool_auto_link_memory(args: dict) -> dict:
     """Tool: Auto-find and link related memories for a given memory node (Zettelkasten style)."""
     owner_id = int(args.get("_owner_id", 1))
@@ -355,6 +373,10 @@ TOOL_DISPATCH: Dict[str, Callable[[dict], dict]] = {
     "self_improve": tool_self_improve,
     # Karpathy experiment loop
     "run_experiment": tool_run_experiment,
+    # DSPy prompt optimisation
+    "optimise_prompts": tool_optimise_prompts,
+    # Sub-agent isolation (CORPGEN)
+    "run_isolated_task": tool_run_isolated_task,
     # Memory graph (A-MEM / MAGMA / Zettelkasten)
     "link_memories": tool_link_memories,
     "memory_graph_search": tool_memory_graph_search,
@@ -435,6 +457,10 @@ TOOL_CATEGORIES: Dict[str, set] = {
     },
     "self_awareness": {
         "run_retro", "get_patterns", "self_improve", "run_experiment",
+        "optimise_prompts",
+    },
+    "agent_tasks": {
+        "run_isolated_task",
     },
     "skill_library": {
         "save_skill", "recall_skill", "list_skills", "get_skill", "archive_skill",
@@ -457,6 +483,7 @@ _INTENT_KEYWORDS: Dict[str, List[str]] = {
     "custom": ["create tool", "custom tool", "build tool", "make tool", "new tool"],
     "agent_team": ["agent team", "autonomous", "refactor", "modify code", "code change", "implement feature", "fix bug", "add feature"],
     "skill_library": ["skill", "save skill", "recall skill", "remember how", "list skills", "what skills", "reuse", "past task", "learned"],
+    "agent_tasks": ["isolated", "sub-task", "subtask", "separate task", "run in isolation", "parallel task"],
 }
 
 # Base categories always included for safety (file, code, memory)
