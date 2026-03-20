@@ -355,6 +355,13 @@ def run_agent_turn(
     except Exception as _recall_err:
         logger.debug("RECALL_INJECT_SKIP: %s", str(_recall_err)[:100])
 
+    # Inject Reflexion lessons (past failure reflections — don't repeat mistakes)
+    try:
+        from ..services.reflexion import inject_reflexion_context
+        inject_reflexion_context(db, owner_id, user_message, messages)
+    except Exception as _reflex_err:
+        logger.debug("REFLEXION_INJECT_SKIP: %s", str(_reflex_err)[:100])
+
     # Inject relevant episodic memories (past similar situations)
     try:
         from .episodes import recall_similar_episodes
@@ -454,6 +461,17 @@ def run_agent_turn(
             # Background tasks after successful turn (non-blocking)
             import threading
 
+            # 0. Reflexion: reflect on task-level failures
+            try:
+                from ..services.reflexion import reflect_on_task_failure
+                threading.Thread(
+                    target=reflect_on_task_failure,
+                    args=(owner_id, user_message, content),
+                    daemon=True,
+                ).start()
+            except Exception:
+                pass
+
             # 1. Update pattern tracker
             try:
                 from ..services.prediction import update_patterns_after_turn
@@ -518,6 +536,18 @@ def run_agent_turn(
                 tool_result = execute_tool(tool_name, tool_args)
                 increment_runtime_state("desktop_actions_total")
 
+            # Reflexion: reflect on tool failures in background
+            if not tool_result.get("ok") and tool_result.get("error"):
+                try:
+                    from ..services.reflexion import reflect_on_tool_failure
+                    reflect_on_tool_failure(
+                        owner_id, tool_name, tool_args,
+                        str(tool_result.get("error", ""))[:200],
+                        user_message,
+                    )
+                except Exception:
+                    pass
+
             # Guard, truncate, and redact the result
             result_content, _truncated = guarded_tool_result_payload(
                 tool_name, tool_call_id, tool_result
@@ -537,6 +567,16 @@ def run_agent_turn(
     # Max loops reached
     final_msg = "Maximum tool iterations reached. Task may be incomplete."
     save_assistant_message(db, owner_id, final_msg)
+    try:
+        from ..services.reflexion import reflect_on_task_failure
+        import threading
+        threading.Thread(
+            target=reflect_on_task_failure,
+            args=(owner_id, user_message, final_msg),
+            daemon=True,
+        ).start()
+    except Exception:
+        pass
     return final_msg
 
 
@@ -597,6 +637,11 @@ def build_system_prompt(identity: Optional[Dict] = None) -> str:
         "- Use `save_skill` AFTER successfully completing a non-trivial task to save the approach for future reuse.",
         "- Use `list_skills` to see your full library of learned capabilities.",
         "- Think of skills as your long-term procedural memory — don't reinvent the wheel.",
+        "",
+        "Reflexion (verbal reinforcement learning):",
+        "- Past failures are automatically reflected on and stored as lessons.",
+        "- [REFLEXION] blocks in your context contain lessons from past mistakes — follow them.",
+        "- When you complete 3 attempts on a failing task, write your own reflection: 'I tried X. Failed because Y. Next time I should Z.'",
         "",
         "You are Bob, not Claude. You are built on Kimi K2.5. Always identify yourself as Bob.",
         "Use tools as needed to help the user. Be concise and effective.",
