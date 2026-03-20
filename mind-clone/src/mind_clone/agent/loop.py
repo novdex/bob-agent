@@ -355,6 +355,20 @@ def run_agent_turn(
     except Exception as _recall_err:
         logger.debug("RECALL_INJECT_SKIP: %s", str(_recall_err)[:100])
 
+    # Multi-turn planning: generate execution plan before acting on complex tasks
+    try:
+        from ..services.planner import inject_plan_context
+        inject_plan_context(user_message, messages)
+    except Exception as _plan_err:
+        logger.debug("PLANNER_SKIP: %s", str(_plan_err)[:80])
+
+    # Tree of Thoughts: branch multiple approaches for decision/strategy tasks
+    try:
+        from ..services.tree_of_thoughts import inject_tot_context
+        inject_tot_context(user_message, messages)
+    except Exception as _tot_err:
+        logger.debug("TOT_SKIP: %s", str(_tot_err)[:80])
+
     # Inject Reflexion lessons (past failure reflections — don't repeat mistakes)
     try:
         from ..services.reflexion import inject_reflexion_context
@@ -523,6 +537,13 @@ def run_agent_turn(
             try:
                 from ..services.constitutional import maybe_review
                 content = maybe_review(user_message, content)
+            except Exception:
+                pass
+
+            # 5. Co-evolving critic (runs after constitutional, independent check)
+            try:
+                from ..services.co_critic import co_critique
+                content, _ = co_critique(user_message, content)
             except Exception:
                 pass
 

@@ -191,6 +191,42 @@ def tool_memory_graph_search(args: dict) -> dict:
         return {"ok": False, "error": str(e)[:200]}
 
 
+def tool_research_github(args: dict) -> dict:
+    """Tool: Search GitHub for top repos on a topic, extract insights, save as ResearchNotes."""
+    try:
+        from ..services.github_research import tool_research_github as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def tool_forge_tool(args: dict) -> dict:
+    """Tool: Synthesize and register a new capability tool on the fly."""
+    try:
+        from ..services.tool_forge import tool_forge_tool as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def tool_evolve_critic(args: dict) -> dict:
+    """Tool: Evolve the critic's principles based on real failure history."""
+    try:
+        from ..services.co_critic import tool_evolve_critic as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def tool_scan_triggers(args: dict) -> dict:
+    """Tool: Scan event triggers and return any that have fired."""
+    try:
+        from ..services.event_triggers import tool_scan_triggers as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
 def tool_memory_decay(args: dict) -> dict:
     """Tool: Run Ebbinghaus memory decay and pruning cycle."""
     owner_id = int(args.get("_owner_id", 1))
@@ -385,6 +421,14 @@ TOOL_DISPATCH: Dict[str, Callable[[dict], dict]] = {
     "run_experiment": tool_run_experiment,
     # Ebbinghaus memory decay
     "memory_decay": tool_memory_decay,
+    # GitHub research
+    "research_github": tool_research_github,
+    # On-the-fly tool creation
+    "forge_tool": tool_forge_tool,
+    # Co-evolving critic
+    "evolve_critic": tool_evolve_critic,
+    # Event-driven triggers
+    "scan_triggers": tool_scan_triggers,
     # DSPy prompt optimisation
     "optimise_prompts": tool_optimise_prompts,
     # Sub-agent isolation (CORPGEN)
@@ -469,7 +513,10 @@ TOOL_CATEGORIES: Dict[str, set] = {
     },
     "self_awareness": {
         "run_retro", "get_patterns", "self_improve", "run_experiment",
-        "optimise_prompts", "memory_decay",
+        "optimise_prompts", "memory_decay", "evolve_critic", "scan_triggers",
+    },
+    "research": {
+        "research_github", "forge_tool",
     },
     "agent_tasks": {
         "run_isolated_task",

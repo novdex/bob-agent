@@ -662,6 +662,52 @@ ALL_TOOL_SCHEMAS.extend([
     {
         "type": "function",
         "function": {
+            "name": "research_github",
+            "description": "Search GitHub for top repos on a topic, read READMEs, extract key insights, and save as ResearchNotes linked in the knowledge graph.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "topic": {"type": "string", "description": "Topic to research on GitHub"},
+                    "save_notes": {"type": "boolean", "description": "Save findings as ResearchNotes (default true)", "default": True},
+                },
+                "required": ["topic"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "forge_tool",
+            "description": "Synthesize and register a new Python tool on the fly when you discover a capability gap. Use when you can't do something and need a new tool right now.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "capability": {"type": "string", "description": "What capability the new tool needs to provide"},
+                    "tool_name": {"type": "string", "description": "Name for the new tool (snake_case)"},
+                },
+                "required": ["capability"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "evolve_critic",
+            "description": "Evolve the co-critic's principles based on real failure history. Run weekly to keep the critic sharp as Bob improves.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "scan_triggers",
+            "description": "Scan event triggers: error spikes, stale experiments, memory bloat, degraded tools. Returns list of events that need attention.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "memory_decay",
             "description": "Run Ebbinghaus memory decay: fades unimportant old memories, boosts recalled ones, prunes noise. Run daily for healthy memory hygiene.",
             "parameters": {"type": "object", "properties": {}, "required": []},
