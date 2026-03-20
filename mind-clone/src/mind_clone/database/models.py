@@ -434,6 +434,29 @@ class ExecutionEvent(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
+class MemoryLink(Base):
+    """Graph edges linking memory nodes together (A-MEM / MAGMA style).
+
+    Connects any memory node (ResearchNote, EpisodicMemory, SelfImprovementNote, SkillProfile)
+    to another. Enables Zettelkasten-style knowledge graph traversal.
+    """
+    __tablename__ = "memory_links"
+
+    id = Column(Integer, primary_key=True, index=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    # Source node
+    src_type = Column(String, index=True, nullable=False)   # research_note | episodic | improvement | skill
+    src_id = Column(Integer, index=True, nullable=False)
+    # Target node
+    tgt_type = Column(String, index=True, nullable=False)
+    tgt_id = Column(Integer, index=True, nullable=False)
+    # Relationship
+    relation = Column(String, index=True, nullable=False, default="related")  # related | supports | contradicts | evolved_from | caused_by
+    weight = Column(Float, nullable=False, default=1.0)
+    note = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 class MemoryVector(Base):
     """Vector embeddings for semantic memory search."""
     __tablename__ = "memory_vectors"
@@ -567,6 +590,7 @@ __all__ = [
     "ExecutionEvent",
     "MemoryVector",
     "OpsAuditEvent",
+    "MemoryLink",
     "ExperimentLog",
     "SkillProfile",
     "SkillVersion",

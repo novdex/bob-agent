@@ -466,12 +466,23 @@ def tool_save_research_note(args: dict) -> dict:
         db.add(note)
         db.commit()
         db.refresh(note)
+        note_id = int(note.id)
+
+        # Auto-link to related memories (Zettelkasten style)
+        try:
+            from ..services.memory_graph import auto_link
+            links = auto_link(db, owner_id, "research_note", note_id)
+            auto_linked = len(links)
+        except Exception:
+            auto_linked = 0
+
         return {
             "ok": True,
             "saved": True,
-            "note_id": int(note.id),
+            "note_id": note_id,
             "owner_id": int(note.owner_id),
             "topic": str(note.topic),
+            "auto_linked": auto_linked,
         }
     except Exception as e:
         db.rollback()

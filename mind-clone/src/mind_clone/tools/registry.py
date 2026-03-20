@@ -143,6 +143,75 @@ def tool_run_experiment(args: dict) -> dict:
         return {"ok": False, "error": str(e)[:200]}
 
 
+def tool_link_memories(args: dict) -> dict:
+    """Tool: Create a graph link between two memory nodes."""
+    owner_id = int(args.get("_owner_id", 1))
+    try:
+        from ..services.memory_graph import link_memories
+        from ..database.session import SessionLocal
+        db = SessionLocal()
+        try:
+            link = link_memories(
+                db, owner_id,
+                src_type=str(args.get("src_type", "")),
+                src_id=int(args.get("src_id", 0)),
+                tgt_type=str(args.get("tgt_type", "")),
+                tgt_id=int(args.get("tgt_id", 0)),
+                relation=str(args.get("relation", "related")),
+                weight=float(args.get("weight", 1.0)),
+                note=args.get("note"),
+            )
+            if link:
+                return {"ok": True, "link_id": link.id, "relation": link.relation}
+            return {"ok": False, "error": "Could not create link (invalid types or self-loop)"}
+        finally:
+            db.close()
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def tool_memory_graph_search(args: dict) -> dict:
+    """Tool: Traverse Bob's memory graph from a starting node to find related memories."""
+    owner_id = int(args.get("_owner_id", 1))
+    try:
+        from ..services.memory_graph import graph_search
+        from ..database.session import SessionLocal
+        db = SessionLocal()
+        try:
+            return graph_search(
+                db, owner_id,
+                start_type=str(args.get("start_type", "")),
+                start_id=int(args.get("start_id", 0)),
+                depth=min(int(args.get("depth", 2)), 3),
+                max_nodes=min(int(args.get("max_nodes", 10)), 20),
+            )
+        finally:
+            db.close()
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def tool_auto_link_memory(args: dict) -> dict:
+    """Tool: Auto-find and link related memories for a given memory node (Zettelkasten style)."""
+    owner_id = int(args.get("_owner_id", 1))
+    try:
+        from ..services.memory_graph import auto_link
+        from ..database.session import SessionLocal
+        db = SessionLocal()
+        try:
+            links = auto_link(
+                db, owner_id,
+                src_type=str(args.get("src_type", "")),
+                src_id=int(args.get("src_id", 0)),
+                min_overlap=int(args.get("min_overlap", 2)),
+            )
+            return {"ok": True, "links_created": len(links), "links": links}
+        finally:
+            db.close()
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
 def tool_get_patterns(args: dict) -> dict:
     """Return Arsh's conversation patterns and interests."""
     owner_id = int(args.get("_owner_id", 1))
@@ -286,6 +355,10 @@ TOOL_DISPATCH: Dict[str, Callable[[dict], dict]] = {
     "self_improve": tool_self_improve,
     # Karpathy experiment loop
     "run_experiment": tool_run_experiment,
+    # Memory graph (A-MEM / MAGMA / Zettelkasten)
+    "link_memories": tool_link_memories,
+    "memory_graph_search": tool_memory_graph_search,
+    "auto_link_memory": tool_auto_link_memory,
     # Skill library (Voyager-style)
     "save_skill": tool_save_skill,
     "recall_skill": tool_recall_skill,
@@ -341,6 +414,7 @@ TOOL_CATEGORIES: Dict[str, set] = {
     },
     "memory": {
         "research_memory_search", "semantic_memory_search",
+        "link_memories", "memory_graph_search", "auto_link_memory",
     },
     "scheduler": {
         "schedule_job", "list_scheduled_jobs", "disable_scheduled_job",

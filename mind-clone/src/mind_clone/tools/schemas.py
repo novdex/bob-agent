@@ -600,6 +600,63 @@ SKILL_LIBRARY_SCHEMAS = [
 
 ALL_TOOL_SCHEMAS.extend(SKILL_LIBRARY_SCHEMAS)
 
+# Memory graph schemas (A-MEM / MAGMA / Zettelkasten)
+_MEMORY_GRAPH_SCHEMAS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "link_memories",
+            "description": "Create a directed graph link between two memory nodes. Use to explicitly connect related memories (research notes, skills, improvement notes, episodes).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "src_type": {"type": "string", "enum": ["research_note", "episodic", "improvement", "skill"], "description": "Source node type"},
+                    "src_id": {"type": "integer", "description": "Source node ID"},
+                    "tgt_type": {"type": "string", "enum": ["research_note", "episodic", "improvement", "skill"], "description": "Target node type"},
+                    "tgt_id": {"type": "integer", "description": "Target node ID"},
+                    "relation": {"type": "string", "enum": ["related", "supports", "contradicts", "evolved_from", "caused_by", "learned_from"], "description": "Type of relationship", "default": "related"},
+                    "note": {"type": "string", "description": "Optional note explaining the connection"},
+                },
+                "required": ["src_type", "src_id", "tgt_type", "tgt_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "memory_graph_search",
+            "description": "Traverse Bob's memory graph from a starting node to discover related memories. Returns all connected nodes within the given depth.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "start_type": {"type": "string", "enum": ["research_note", "episodic", "improvement", "skill"], "description": "Starting node type"},
+                    "start_id": {"type": "integer", "description": "Starting node ID"},
+                    "depth": {"type": "integer", "description": "How many hops to traverse (default 2, max 3)", "default": 2},
+                    "max_nodes": {"type": "integer", "description": "Max nodes to return (default 10)", "default": 10},
+                },
+                "required": ["start_type", "start_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "auto_link_memory",
+            "description": "Automatically find and link related memories to a given node using keyword overlap (Zettelkasten style). Call this after saving a new research note or skill.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "src_type": {"type": "string", "enum": ["research_note", "episodic", "improvement", "skill"], "description": "Node type to auto-link"},
+                    "src_id": {"type": "integer", "description": "Node ID to auto-link"},
+                    "min_overlap": {"type": "integer", "description": "Minimum keyword overlap to create a link (default 2)", "default": 2},
+                },
+                "required": ["src_type", "src_id"],
+            },
+        },
+    },
+]
+ALL_TOOL_SCHEMAS.extend(_MEMORY_GRAPH_SCHEMAS)
+
 # Karpathy experiment loop schema
 ALL_TOOL_SCHEMAS.append({
     "type": "function",
