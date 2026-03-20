@@ -248,7 +248,7 @@ def get_recent_reflections(
                 text = f"{r.title} {r.summary}".lower()
                 overlap = sum(1 for k in keywords if k in text)
                 scored.append((overlap, r))
-            scored.sort(reverse=True)
+            scored.sort(key=lambda x: x[0], reverse=True)
             rows = [r for _, r in scored[:limit]]
         else:
             rows = rows[:limit]
