@@ -128,14 +128,22 @@ def should_enqueue_message(owner_id: int, source: str = "telegram", text: str = 
 
 async def command_queue_worker_loop(worker_id: int):
     """Command queue worker loop."""
+    # Ensure the async queue exists before we try to pull from it
+    global COMMAND_QUEUE
+    if COMMAND_QUEUE is None:
+        COMMAND_QUEUE = asyncio.Queue()
+
+    # Register this task in the global worker dict so active_command_queue_worker_count works
+    COMMAND_QUEUE_WORKER_TASKS[worker_id] = asyncio.current_task()
     alive_count = active_command_queue_worker_count()
-    RUNTIME_STATE["command_queue_worker_alive_count"] = max(alive_count, 1)
+    RUNTIME_STATE["command_queue_worker_alive_count"] = alive_count
     RUNTIME_STATE["command_queue_worker_alive"] = True
     log.info(
-        "COMMAND_QUEUE_WORKER_START worker=%d mode=%s max_size=%d",
+        "COMMAND_QUEUE_WORKER_START worker=%d mode=%s max_size=%d alive=%d",
         worker_id,
         COMMAND_QUEUE_MODE,
         COMMAND_QUEUE_MAX_SIZE,
+        alive_count,
     )
     try:
         while True:

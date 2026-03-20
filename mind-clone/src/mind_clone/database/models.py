@@ -11,7 +11,7 @@ import uuid
 from typing import Optional
 
 from sqlalchemy import (
-    Column, Integer, String, DateTime, ForeignKey, Text, LargeBinary, Boolean, func
+    Column, Integer, String, DateTime, ForeignKey, Text, LargeBinary, Boolean, Float, func
 )
 from sqlalchemy.ext.mutable import MutableList, MutableDict
 from sqlalchemy.types import JSON
@@ -332,6 +332,9 @@ class SelfImprovementNote(Base):
     evidence_json = Column(Text, nullable=False, default="{}")
     priority = Column(String, index=True, nullable=False, default="medium")
     status = Column(String, index=True, nullable=False, default="open")
+    importance = Column(Float, nullable=False, default=1.0)   # Ebbinghaus weight
+    recall_count = Column(Integer, nullable=False, default=0)
+    last_recalled_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
@@ -368,6 +371,9 @@ class EpisodicMemory(Base):
     tools_used_json = Column(Text, nullable=False, default="[]")
     source_type = Column(String, index=True, nullable=False, default="chat")
     source_ref = Column(String, nullable=True)
+    importance = Column(Float, nullable=False, default=1.0)   # Ebbinghaus weight (0.0–1.0)
+    recall_count = Column(Integer, nullable=False, default=0)  # how many times recalled
+    last_recalled_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
@@ -431,6 +437,29 @@ class ExecutionEvent(Base):
     source_ref = Column(String, index=True, nullable=True)
     event_type = Column(String, index=True, nullable=False)
     payload_json = Column(Text, nullable=False, default="{}")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class MemoryLink(Base):
+    """Graph edges linking memory nodes together (A-MEM / MAGMA style).
+
+    Connects any memory node (ResearchNote, EpisodicMemory, SelfImprovementNote, SkillProfile)
+    to another. Enables Zettelkasten-style knowledge graph traversal.
+    """
+    __tablename__ = "memory_links"
+
+    id = Column(Integer, primary_key=True, index=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    # Source node
+    src_type = Column(String, index=True, nullable=False)   # research_note | episodic | improvement | skill
+    src_id = Column(Integer, index=True, nullable=False)
+    # Target node
+    tgt_type = Column(String, index=True, nullable=False)
+    tgt_id = Column(Integer, index=True, nullable=False)
+    # Relationship
+    relation = Column(String, index=True, nullable=False, default="related")  # related | supports | contradicts | evolved_from | caused_by
+    weight = Column(Float, nullable=False, default=1.0)
+    note = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
@@ -499,6 +528,25 @@ class SkillVersion(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
+class ExperimentLog(Base):
+    """Karpathy-style self-improvement experiment audit trail."""
+    __tablename__ = "experiment_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    hypothesis_title = Column(String, nullable=False)
+    target_file = Column(String, nullable=True)
+    score_before = Column(Float, nullable=False, default=0.0)
+    score_after = Column(Float, nullable=False, default=0.0)
+    improved = Column(Boolean, nullable=False, default=False)
+    committed = Column(Boolean, nullable=False, default=False)
+    reverted = Column(Boolean, nullable=False, default=False)
+    tests_passed = Column(Boolean, nullable=False, default=False)
+    error_msg = Column(Text, nullable=True)
+    hypothesis_json = Column(Text, nullable=False, default="{}")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 class SkillRun(Base):
     """Skill execution audit trail."""
     __tablename__ = "skill_runs"
@@ -548,6 +596,8 @@ __all__ = [
     "ExecutionEvent",
     "MemoryVector",
     "OpsAuditEvent",
+    "MemoryLink",
+    "ExperimentLog",
     "SkillProfile",
     "SkillVersion",
     "SkillRun",

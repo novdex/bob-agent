@@ -144,11 +144,44 @@ def active_command_queue_worker_count() -> int:
 
 
 async def ensure_command_queue_workers_running():
-    pass
+    """Start command queue workers up to COMMAND_QUEUE_WORKER_COUNT if not already running."""
+    import asyncio as _asyncio
+    from .state import COMMAND_QUEUE_WORKER_TASKS, COMMAND_QUEUE
+
+    # Ensure the queue exists
+    if COMMAND_QUEUE is None:
+        from .state import COMMAND_QUEUE as _cq
+        if _cq is None:
+            import mind_clone.core.state as _state
+            _state.COMMAND_QUEUE = _asyncio.Queue()
+
+    try:
+        from ..services.telegram.dispatch import command_queue_worker_loop
+    except Exception:
+        return
+
+    for worker_id in range(COMMAND_QUEUE_WORKER_COUNT):
+        existing = COMMAND_QUEUE_WORKER_TASKS.get(worker_id)
+        if existing is None or existing.done():
+            task = _asyncio.create_task(command_queue_worker_loop(worker_id))
+            COMMAND_QUEUE_WORKER_TASKS[worker_id] = task
+            logger.info("ensure_command_queue_workers_running: started worker=%d", worker_id)
 
 
 async def cancel_command_queue_workers():
-    pass
+    """Cancel all running command queue workers."""
+    import asyncio as _asyncio
+    from .state import COMMAND_QUEUE_WORKER_TASKS
+
+    for worker_id, task in list(COMMAND_QUEUE_WORKER_TASKS.items()):
+        if task and not task.done():
+            task.cancel()
+            try:
+                await task
+            except _asyncio.CancelledError:
+                pass
+        COMMAND_QUEUE_WORKER_TASKS.pop(worker_id, None)
+    logger.info("cancel_command_queue_workers: all workers cancelled")
 
 
 def set_owner_queue_mode(owner_id: int, mode: str) -> str:

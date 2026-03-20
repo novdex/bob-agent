@@ -59,93 +59,120 @@ _GAP_HINT_MESSAGE = (
 def _sanitize_tool_pairs(messages: List[dict]) -> List[dict]:
     """Sanitize tool_call / tool_response pairs for LLM API compatibility.
 
-    Ensures:
-    1. Every assistant tool_call has a matching tool_response
-    2. Every tool_response has a matching assistant tool_call
-    3. Assistant messages with tool_calls have reasoning_content
-    4. Empty content is replaced with placeholders
-
-    Args:
-        messages: List of message dicts
-
-    Returns:
-        Sanitized message list with orphaned tool_calls/responses removed
+    Strict two-pass algorithm:
+    1. Build exact mappings: which tool_call IDs exist in assistant messages
+       AND which tool response IDs exist — only keep pairs where BOTH exist.
+    2. Strip assistant tool_calls with no matching responses.
+    3. Strip tool responses with no matching assistant tool_call.
+    4. Fix empty content fields.
     """
     if not messages:
         return []
 
-    # First pass: collect all tool_call_ids from both assistant messages AND tool responses
-    assistant_tool_call_ids = set()
-    tool_response_ids = set()
+    # Pass 1: collect IDs from each side
+    assistant_tool_call_ids: set = set()
+    tool_response_ids: set = set()
 
     for msg in messages:
         if msg.get("role") == "assistant" and msg.get("tool_calls"):
             for tc in msg["tool_calls"]:
-                assistant_tool_call_ids.add(tc.get("id"))
+                tid = tc.get("id")
+                if tid:
+                    assistant_tool_call_ids.add(tid)
         elif msg.get("role") == "tool":
-            tool_response_ids.add(msg.get("tool_call_id"))
+            tid = msg.get("tool_call_id")
+            if tid:
+                tool_response_ids.add(tid)
 
-    # Second pass: filter and sanitize
+    # Only IDs present on BOTH sides are valid
+    valid_ids: set = assistant_tool_call_ids & tool_response_ids
+
+    # Pass 2: filter — build result, tracking which tool_call IDs are already claimed
     result = []
+    claimed_ids: set = set()  # tool_call IDs already matched by a previous assistant msg
+
     for msg in messages:
-        # Handle tool response messages
-        if msg.get("role") == "tool":
-            tool_call_id = msg.get("tool_call_id")
-            # Keep only if there's a matching assistant tool_call
-            if tool_call_id in assistant_tool_call_ids:
+        role = msg.get("role")
+
+        if role == "tool":
+            tid = msg.get("tool_call_id")
+            # Keep only if it's in valid_ids AND not yet claimed by a duplicate
+            if tid in valid_ids:
                 result.append(msg)
-            # else: drop orphaned tool response
+                claimed_ids.add(tid)
+            # else: orphaned or duplicate — drop
             continue
 
-        # Handle assistant messages
-        if msg.get("role") == "assistant":
+        if role == "assistant":
             msg_copy = msg.copy()
             tool_calls = msg_copy.get("tool_calls")
 
-            # If no tool_calls, just handle empty content
             if not tool_calls:
-                if msg_copy.get("content") == "":
+                if msg_copy.get("content") in ("", None):
                     msg_copy["content"] = "(empty)"
                 result.append(msg_copy)
                 continue
 
-            # Has tool_calls: verify all have matching responses
-            all_matched = all(
-                tc.get("id") in tool_response_ids for tc in tool_calls
-            )
+            # Filter to valid IDs that haven't been claimed yet
+            fresh_tcs = [
+                tc for tc in tool_calls
+                if tc.get("id") in valid_ids and tc.get("id") not in claimed_ids
+            ]
 
-            if not all_matched:
-                # Partial or no match: strip tool_calls entirely
+            if not fresh_tcs:
+                # All IDs already claimed by earlier assistant msg OR none valid
+                # Strip tool_calls — treat as plain text response
                 msg_copy.pop("tool_calls", None)
-                if msg_copy.get("content") == "":
+                if msg_copy.get("content") in ("", None):
                     msg_copy["content"] = "(empty)"
                 result.append(msg_copy)
                 continue
 
-            # All tool_calls matched: keep and sanitize
-            # 1. Add reasoning_content if missing
+            msg_copy["tool_calls"] = fresh_tcs
             if "reasoning_content" not in msg_copy:
-                msg_copy["reasoning_content"] = msg_copy.get("content", "")
-
-            # 2. Fix empty content with tool_calls
-            if msg_copy.get("content") == "":
+                msg_copy["reasoning_content"] = msg_copy.get("content", "") or ""
+            if msg_copy.get("content") in ("", None):
                 msg_copy["content"] = "(tool calls)"
-
             result.append(msg_copy)
             continue
 
-        # Non-assistant, non-tool messages (system, user)
-        if msg.get("content") == "" and msg.get("role") in ("user", "system"):
-            # Also sanitize empty content in other roles if needed
+        # system / user — fix empty content
+        if msg.get("content") in ("", None) and role in ("user", "system"):
             msg_copy = msg.copy()
             msg_copy["content"] = "(empty)"
             result.append(msg_copy)
             continue
 
-        # Pass through unchanged
         result.append(msg)
 
-    return result
+    # Pass 3: final check — remove any assistant tool_calls whose responses
+    # didn't end up in the result (can happen if tool responses were dropped)
+    final_tool_response_ids = {
+        m.get("tool_call_id") for m in result if m.get("role") == "tool"
+    }
+    final = []
+    for msg in result:
+        if msg.get("role") == "assistant" and msg.get("tool_calls"):
+            msg_copy = msg.copy()
+            matched_tcs = [
+                tc for tc in msg_copy["tool_calls"]
+                if tc.get("id") in final_tool_response_ids
+            ]
+            if not matched_tcs:
+                msg_copy.pop("tool_calls", None)
+                if msg_copy.get("content") in ("", None):
+                    msg_copy["content"] = "(empty)"
+            else:
+                msg_copy["tool_calls"] = matched_tcs
+                # CRITICAL: Kimi requires reasoning_content on EVERY assistant
+                # message that has tool_calls — ensure it's always present
+                if "reasoning_content" not in msg_copy:
+                    msg_copy["reasoning_content"] = msg_copy.get("content", "") or ""
+            final.append(msg_copy)
+        else:
+            final.append(msg)
+
+    return final
 
 
 def _classify_message_complexity(message: Optional[str]) -> str:
@@ -299,8 +326,116 @@ def run_agent_turn(
     messages = prepare_messages_for_llm(db, owner_id)
     messages = _sanitize_tool_pairs(messages)
 
+    # Select and inject reasoning strategy
+    try:
+        from .reasoning import select_reasoning_strategy, build_reasoning_prefix, track_reasoning_metrics
+        strategy = select_reasoning_strategy(user_message)
+        prefix = build_reasoning_prefix(strategy, user_message)
+        if prefix:
+            messages.append({"role": "system", "content": prefix})
+            track_reasoning_metrics(strategy)
+            logger.debug("REASONING_STRATEGY strategy=%s", strategy)
+    except Exception as _r_err:
+        logger.debug("REASONING_INJECT_SKIP: %s", str(_r_err)[:100])
+
     # Inject matching skill playbooks before LLM call
     _inject_matching_skills(db, owner_id, user_message, messages)
+
+    # Inject predictive context (user's recurring interests + patterns)
+    try:
+        from ..services.prediction import inject_predictive_context
+        inject_predictive_context(db, owner_id, user_message, messages)
+    except Exception as _pred_err:
+        logger.debug("PREDICTIVE_INJECT_SKIP: %s", str(_pred_err)[:100])
+
+    # Inject long-term memory recall (self-improvement notes, research, lessons)
+    try:
+        from .recall import inject_recall_context
+        inject_recall_context(db, owner_id, user_message, messages)
+    except Exception as _recall_err:
+        logger.debug("RECALL_INJECT_SKIP: %s", str(_recall_err)[:100])
+
+    # User profile injection
+    try:
+        from ..services.user_profile import inject_profile_context
+        inject_profile_context(owner_id, messages)
+    except Exception as _up_err:
+        logger.debug("PROFILE_INJECT_SKIP: %s", str(_up_err)[:80])
+
+    # World model injection
+    try:
+        from ..services.world_model import inject_world_context
+        inject_world_context(owner_id, messages)
+    except Exception as _wm_err:
+        logger.debug("WORLD_MODEL_SKIP: %s", str(_wm_err)[:80])
+
+    # JitRL — inject high-value past experiences as few-shot examples
+    try:
+        from ..services.jit_rl import inject_jit_examples
+        inject_jit_examples(owner_id, user_message, messages)
+    except Exception as _jit_err:
+        logger.debug("JITRL_SKIP: %s", str(_jit_err)[:80])
+
+    # Multi-turn planning: generate execution plan before acting on complex tasks
+    try:
+        from ..services.planner import inject_plan_context
+        inject_plan_context(user_message, messages)
+    except Exception as _plan_err:
+        logger.debug("PLANNER_SKIP: %s", str(_plan_err)[:80])
+
+    # Tree of Thoughts: branch multiple approaches for decision/strategy tasks
+    try:
+        from ..services.tree_of_thoughts import inject_tot_context
+        inject_tot_context(user_message, messages)
+    except Exception as _tot_err:
+        logger.debug("TOT_SKIP: %s", str(_tot_err)[:80])
+
+    # Inject Reflexion lessons (past failure reflections — don't repeat mistakes)
+    try:
+        from ..services.reflexion import inject_reflexion_context
+        inject_reflexion_context(db, owner_id, user_message, messages)
+    except Exception as _reflex_err:
+        logger.debug("REFLEXION_INJECT_SKIP: %s", str(_reflex_err)[:100])
+
+    # Inject optimised tool hints (DSPy-style, only if any exist)
+    try:
+        from ..services.prompt_optimizer import build_tool_hints_block
+        hints_block = build_tool_hints_block(db, owner_id)
+        if hints_block:
+            messages.append({"role": "system", "content": hints_block})
+    except Exception as _dspy_err:
+        logger.debug("DSPY_HINTS_SKIP: %s", str(_dspy_err)[:80])
+
+    # Inject relevant episodic memories (past similar situations)
+    try:
+        from .episodes import recall_similar_episodes
+        episodes = recall_similar_episodes(owner_id, user_message, limit=3)
+        if episodes:
+            ep_lines = []
+            for ep in episodes:
+                outcome_emoji = "✅" if ep["outcome"] == "success" else "❌" if ep["outcome"] == "failure" else "⚠️"
+                ep_lines.append(
+                    f"{outcome_emoji} Situation: {ep['situation'][:120]} | "
+                    f"Action: {ep['action_taken'][:120]} | "
+                    f"Outcome: {ep['outcome']}"
+                )
+            messages.append({
+                "role": "system",
+                "content": (
+                    "[EPISODIC MEMORY] Similar past situations you've handled:\n" +
+                    "\n".join(ep_lines) +
+                    "\nUse this context to improve your response."
+                ),
+            })
+    except Exception as _ep_err:
+        logger.debug("EPISODE_INJECT_SKIP: %s", str(_ep_err)[:100])
+
+    # Adaptive context compression — keep context lean
+    try:
+        from ..services.context_compressor import compress_context
+        messages = compress_context(messages)
+    except Exception as _cc_err:
+        logger.debug("CONTEXT_COMPRESS_SKIP: %s", str(_cc_err)[:80])
 
     # Get tool definitions (built-in + custom)
     tools = effective_tool_definitions(owner_id=owner_id)
@@ -345,6 +480,28 @@ def run_agent_turn(
         reasoning_content = result.get("reasoning_content", "")
         tool_calls = result.get("tool_calls")
 
+        # Remap tool_call IDs to UUIDs to prevent duplicate ID collisions
+        # Kimi returns short IDs like "search_web:7" which repeat across turns
+        if tool_calls:
+            import uuid as _uuid
+            id_remap = {}
+            for tc in tool_calls:
+                old_id = tc.get("id", "")
+                new_id = f"call_{_uuid.uuid4().hex[:16]}"
+                id_remap[old_id] = new_id
+                tc["id"] = new_id
+            # Also remap in the result so tool execution uses new IDs
+            result["tool_calls"] = tool_calls
+
+        # Generator → Verifier → Reviser (DeepMind Aletheia)
+        # On first response for complex tasks: verify before acting
+        if content and tool_loops == 0 and not tool_calls:
+            try:
+                from ..services.verifier import maybe_verify
+                content = maybe_verify(user_message, content, owner_id)
+            except Exception as _vf_err:
+                logger.debug("VERIFIER_SKIP: %s", str(_vf_err)[:80])
+
         # If no tool calls, check for capability gap before returning
         if not tool_calls:
             # Gap detection: if LLM says "I can't", inject hint and retry
@@ -360,6 +517,95 @@ def run_agent_turn(
                     continue  # Re-call LLM with hint injected
 
             save_assistant_message(db, owner_id, content)
+
+            # Background tasks after successful turn (non-blocking)
+            import threading
+
+            # 0. Reflexion: reflect on task-level failures
+            try:
+                from ..services.reflexion import reflect_on_task_failure
+                threading.Thread(
+                    target=reflect_on_task_failure,
+                    args=(owner_id, user_message, content),
+                    daemon=True,
+                ).start()
+            except Exception:
+                pass
+
+            # 1. Update pattern tracker
+            try:
+                from ..services.prediction import update_patterns_after_turn
+                threading.Thread(
+                    target=update_patterns_after_turn,
+                    args=(owner_id, user_message),
+                    daemon=True,
+                ).start()
+            except Exception:
+                pass
+
+            # 2. Record episodic memory
+            try:
+                from .episodes import record_episode_from_turn
+                threading.Thread(
+                    target=record_episode_from_turn,
+                    args=(owner_id, user_message, content, messages),
+                    daemon=True,
+                ).start()
+            except Exception:
+                pass
+
+            # 3. Reflexion: reflect on task-level failures
+            try:
+                from ..services.reflexion import reflect_on_task_failure
+                reflect_on_task_failure(owner_id, user_message, content)
+            except Exception:
+                pass
+
+            # 4. Constitutional AI: self-critique before sending
+            try:
+                from ..services.constitutional import maybe_review
+                content = maybe_review(user_message, content)
+            except Exception:
+                pass
+
+            # 5. Co-evolving critic
+            try:
+                from ..services.co_critic import co_critique
+                content, _ = co_critique(user_message, content)
+            except Exception:
+                pass
+
+            # 6. Self-play improvement for opinion/evaluation questions
+            try:
+                from ..services.self_play import self_play_improve
+                content = self_play_improve(user_message, content)
+            except Exception:
+                pass
+
+            # 7. Background: update user profile + world model
+            try:
+                from ..services.user_profile import update_profile_from_turn
+                update_profile_from_turn(owner_id, user_message, content)
+            except Exception:
+                pass
+            try:
+                from ..services.world_model import update_world_from_turn
+                update_world_from_turn(owner_id, user_message, content)
+            except Exception:
+                pass
+
+            # 8. Bob teaches Bob — store high-quality exchanges
+            try:
+                import threading
+                from ..services.bob_teaches_bob import store_teaching_moment
+                threading.Thread(
+                    target=store_teaching_moment,
+                    args=(owner_id, user_message, content),
+                    daemon=True,
+                ).start()
+            except Exception:
+                pass
+
             return content
 
         # Save assistant message with tool calls
@@ -402,6 +648,18 @@ def run_agent_turn(
                 tool_result = execute_tool(tool_name, tool_args)
                 increment_runtime_state("desktop_actions_total")
 
+            # Reflexion: reflect on tool failures in background
+            if not tool_result.get("ok") and tool_result.get("error"):
+                try:
+                    from ..services.reflexion import reflect_on_tool_failure
+                    reflect_on_tool_failure(
+                        owner_id, tool_name, tool_args,
+                        str(tool_result.get("error", ""))[:200],
+                        user_message,
+                    )
+                except Exception:
+                    pass
+
             # Guard, truncate, and redact the result
             result_content, _truncated = guarded_tool_result_payload(
                 tool_name, tool_call_id, tool_result
@@ -418,9 +676,26 @@ def run_agent_turn(
         if tool_loops > MAX_TOOL_LOOPS:
             break
 
+    # ReAct+Reflect after multi-step tool use
+    try:
+        from ..services.react_reflect import reflect_after_task
+        reflect_after_task(owner_id, user_message, "max loops reached", [])
+    except Exception:
+        pass
+
     # Max loops reached
     final_msg = "Maximum tool iterations reached. Task may be incomplete."
     save_assistant_message(db, owner_id, final_msg)
+    try:
+        from ..services.reflexion import reflect_on_task_failure
+        import threading
+        threading.Thread(
+            target=reflect_on_task_failure,
+            args=(owner_id, user_message, final_msg),
+            daemon=True,
+        ).start()
+    except Exception:
+        pass
     return final_msg
 
 
@@ -464,10 +739,30 @@ def build_system_prompt(identity: Optional[Dict] = None) -> str:
 
     lines.extend([
         "",
+        "CRITICAL — Proactive messaging capability:",
+        "- You CAN send messages to the user without them asking first.",
+        "- Use the `schedule_job` tool to set up recurring tasks that automatically deliver results to Telegram.",
+        "- When a user asks to be 'pinged', 'notified', or 'updated' about something on a schedule — USE schedule_job.",
+        "- Do NOT say you cannot send messages. You can. Use schedule_job.",
+        "- Example: user says 'ping me with AI news every 5 minutes' → call schedule_job with interval_seconds=300",
+        "",
         "Tool capabilities:",
         "- Use the `create_tool` directive to define custom Python functions for tasks",
+        "- Use `schedule_job` to create recurring autonomous tasks delivered to Telegram",
         "- Available safe imports: math, json, re, datetime, hashlib, base64, collections",
         "",
+        "Skill Library (Voyager-style — use this):",
+        "- Use `recall_skill` at the START of complex tasks to check if you've solved something similar before.",
+        "- Use `save_skill` AFTER successfully completing a non-trivial task to save the approach for future reuse.",
+        "- Use `list_skills` to see your full library of learned capabilities.",
+        "- Think of skills as your long-term procedural memory — don't reinvent the wheel.",
+        "",
+        "Reflexion (verbal reinforcement learning):",
+        "- Past failures are automatically reflected on and stored as lessons.",
+        "- [REFLEXION] blocks in your context contain lessons from past mistakes — follow them.",
+        "- When you complete 3 attempts on a failing task, write your own reflection: 'I tried X. Failed because Y. Next time I should Z.'",
+        "",
+        "You are Bob, not Claude. You are built on Kimi K2.5. Always identify yourself as Bob.",
         "Use tools as needed to help the user. Be concise and effective.",
     ])
 

@@ -110,8 +110,397 @@ from .agent_team import (
     tool_agent_team_run,
     tool_agent_team_status,
 )
+from .skill_library import (
+    tool_save_skill,
+    tool_recall_skill,
+    tool_list_skills,
+    tool_get_skill,
+    tool_archive_skill,
+)
 
 logger = logging.getLogger("mind_clone.tools")
+
+
+# ---------------------------------------------------------------------------
+# Self-awareness retro tool
+# ---------------------------------------------------------------------------
+
+def tool_self_improve(args: dict) -> dict:
+    """Tool: Bob fixes his top self-improvement opportunity using his own codebase tools."""
+    try:
+        from ..services.self_improve import tool_self_improve as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def tool_run_experiment(args: dict) -> dict:
+    """Tool: Run Bob's Karpathy-style nightly self-improvement experiment loop once."""
+    try:
+        from ..services.auto_research import tool_run_experiment as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def tool_link_memories(args: dict) -> dict:
+    """Tool: Create a graph link between two memory nodes."""
+    owner_id = int(args.get("_owner_id", 1))
+    try:
+        from ..services.memory_graph import link_memories
+        from ..database.session import SessionLocal
+        db = SessionLocal()
+        try:
+            link = link_memories(
+                db, owner_id,
+                src_type=str(args.get("src_type", "")),
+                src_id=int(args.get("src_id", 0)),
+                tgt_type=str(args.get("tgt_type", "")),
+                tgt_id=int(args.get("tgt_id", 0)),
+                relation=str(args.get("relation", "related")),
+                weight=float(args.get("weight", 1.0)),
+                note=args.get("note"),
+            )
+            if link:
+                return {"ok": True, "link_id": link.id, "relation": link.relation}
+            return {"ok": False, "error": "Could not create link (invalid types or self-loop)"}
+        finally:
+            db.close()
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def tool_memory_graph_search(args: dict) -> dict:
+    """Tool: Traverse Bob's memory graph from a starting node to find related memories."""
+    owner_id = int(args.get("_owner_id", 1))
+    try:
+        from ..services.memory_graph import graph_search
+        from ..database.session import SessionLocal
+        db = SessionLocal()
+        try:
+            return graph_search(
+                db, owner_id,
+                start_type=str(args.get("start_type", "")),
+                start_id=int(args.get("start_id", 0)),
+                depth=min(int(args.get("depth", 2)), 3),
+                max_nodes=min(int(args.get("max_nodes", 10)), 20),
+            )
+        finally:
+            db.close()
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def tool_browse_and_extract(args: dict) -> dict:
+    try:
+        from ..services.browser_agent import tool_browse_and_extract as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_rag_search(args: dict) -> dict:
+    try:
+        from ..services.knowledge_base import tool_rag_search as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_rag_ingest(args: dict) -> dict:
+    try:
+        from ..services.knowledge_base import tool_rag_ingest as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_rag_store(args: dict) -> dict:
+    try:
+        from ..services.knowledge_base import tool_rag_store as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_spawn_agents(args: dict) -> dict:
+    try:
+        from ..services.agent_spawner import tool_spawn_agents as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_run_learning(args: dict) -> dict:
+    try:
+        from ..services.continuous_learner import tool_run_learning as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_sandbox_python(args: dict) -> dict:
+    try:
+        from ..services.code_sandbox import tool_sandbox_python as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_sandbox_shell(args: dict) -> dict:
+    try:
+        from ..services.code_sandbox import tool_sandbox_shell as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_speak(args: dict) -> dict:
+    try:
+        from ..services.voice_interface import tool_speak as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_get_calendar(args: dict) -> dict:
+    try:
+        from ..services.calendar_email import tool_get_calendar as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_send_email(args: dict) -> dict:
+    try:
+        from ..services.calendar_email import tool_send_email as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_create_reminder(args: dict) -> dict:
+    try:
+        from ..services.calendar_email import tool_create_reminder as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_dashboard(args: dict) -> dict:
+    try:
+        from ..services.observability import tool_dashboard as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_auto_merge(args: dict) -> dict:
+    try:
+        from ..services.auto_merge import tool_auto_merge as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_check_merge(args: dict) -> dict:
+    try:
+        from ..services.auto_merge import tool_check_merge as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_store_teaching_moment(args: dict) -> dict:
+    try:
+        from ..services.bob_teaches_bob import tool_store_teaching_moment as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_get_user_profile(args: dict) -> dict:
+    try:
+        from ..services.user_profile import tool_get_user_profile as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_update_user_profile(args: dict) -> dict:
+    try:
+        from ..services.user_profile import tool_update_user_profile as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_run_briefing(args: dict) -> dict:
+    try:
+        from ..services.autonomous_research import tool_run_briefing as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_run_self_tests(args: dict) -> dict:
+    try:
+        from ..services.self_tester import tool_run_self_tests as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_generate_tests(args: dict) -> dict:
+    try:
+        from ..services.self_tester import tool_generate_tests as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_get_world_model(args: dict) -> dict:
+    try:
+        from ..services.world_model import tool_get_world_model as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_update_world(args: dict) -> dict:
+    try:
+        from ..services.world_model import tool_update_world as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_meta_research(args: dict) -> dict:
+    try:
+        from ..services.meta_tools import meta_research_and_save
+        return meta_research_and_save(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_meta_report(args: dict) -> dict:
+    try:
+        from ..services.meta_tools import meta_search_and_report
+        return meta_search_and_report(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_meta_run(args: dict) -> dict:
+    try:
+        from ..services.meta_tools import meta_run_and_check
+        return meta_run_and_check(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_research_github(args: dict) -> dict:
+    """Tool: Search GitHub for top repos on a topic, extract insights, save as ResearchNotes."""
+    try:
+        from ..services.github_research import tool_research_github as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def tool_forge_tool(args: dict) -> dict:
+    """Tool: Synthesize and register a new capability tool on the fly."""
+    try:
+        from ..services.tool_forge import tool_forge_tool as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def tool_evolve_critic(args: dict) -> dict:
+    """Tool: Evolve the critic's principles based on real failure history."""
+    try:
+        from ..services.co_critic import tool_evolve_critic as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def tool_scan_triggers(args: dict) -> dict:
+    """Tool: Scan event triggers and return any that have fired."""
+    try:
+        from ..services.event_triggers import tool_scan_triggers as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def tool_memory_decay(args: dict) -> dict:
+    """Tool: Run Ebbinghaus memory decay and pruning cycle."""
+    owner_id = int(args.get("_owner_id", 1))
+    try:
+        from ..services.ebbinghaus import run_daily_memory_maintenance
+        return run_daily_memory_maintenance(owner_id)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def tool_optimise_prompts(args: dict) -> dict:
+    """Tool: Run DSPy-style prompt optimisation to improve Bob's tool usage hints."""
+    try:
+        from ..services.prompt_optimizer import tool_optimise_prompts as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def tool_run_isolated_task(args: dict) -> dict:
+    """Tool: Run a sub-task in an isolated context to prevent memory contamination."""
+    try:
+        from ..services.task_isolator import tool_run_isolated_task as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def tool_auto_link_memory(args: dict) -> dict:
+    """Tool: Auto-find and link related memories for a given memory node (Zettelkasten style)."""
+    owner_id = int(args.get("_owner_id", 1))
+    try:
+        from ..services.memory_graph import auto_link
+        from ..database.session import SessionLocal
+        db = SessionLocal()
+        try:
+            links = auto_link(
+                db, owner_id,
+                src_type=str(args.get("src_type", "")),
+                src_id=int(args.get("src_id", 0)),
+                min_overlap=int(args.get("min_overlap", 2)),
+            )
+            return {"ok": True, "links_created": len(links), "links": links}
+        finally:
+            db.close()
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def tool_get_patterns(args: dict) -> dict:
+    """Return Arsh's conversation patterns and interests."""
+    owner_id = int(args.get("_owner_id", 1))
+    try:
+        from ..services.prediction import get_pattern_summary, get_user_patterns
+        from ..database.session import SessionLocal
+        db = SessionLocal()
+        try:
+            patterns = get_user_patterns(db, owner_id)
+        finally:
+            db.close()
+        return {
+            "ok": True,
+            "top_topics": patterns.get("top_topics", []),
+            "notable": patterns.get("notable", []),
+            "auto_schedulable": patterns.get("auto_schedulable", []),
+            "summary": get_pattern_summary(owner_id),
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def tool_run_retro(args: dict) -> dict:
+    """Run Bob's self-awareness retro and return the analysis."""
+    import asyncio
+    owner_id = int(args.get("_owner_id", 1))
+    send_telegram = bool(args.get("send_to_telegram", True))
+    try:
+        from ..services.retro import run_full_retro
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as pool:
+                    future = pool.submit(asyncio.run, run_full_retro(owner_id, send_telegram))
+                    result = future.result(timeout=120)
+            else:
+                result = asyncio.run(run_full_retro(owner_id, send_telegram))
+        except RuntimeError:
+            result = asyncio.run(run_full_retro(owner_id, send_telegram))
+        return result
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:300]}
 
 # ---------------------------------------------------------------------------
 # Static tool dispatch registry (built-in tools)
@@ -204,6 +593,79 @@ TOOL_DISPATCH: Dict[str, Callable[[dict], dict]] = {
     # Agent team tools
     "agent_team_run": tool_agent_team_run,
     "agent_team_status": tool_agent_team_status,
+    # Self-awareness
+    "run_retro": tool_run_retro,
+    # Predictive intelligence
+    "get_patterns": tool_get_patterns,
+    # Self-improvement
+    "self_improve": tool_self_improve,
+    # Karpathy experiment loop
+    "run_experiment": tool_run_experiment,
+    # Ebbinghaus memory decay
+    "memory_decay": tool_memory_decay,
+    # Browser agent
+    "browse_and_extract": tool_browse_and_extract,
+    # RAG knowledge base
+    "rag_search": tool_rag_search,
+    "rag_ingest": tool_rag_ingest,
+    "rag_store": tool_rag_store,
+    # Multi-agent spawning
+    "spawn_agents": tool_spawn_agents,
+    # Continuous learning
+    "run_learning": tool_run_learning,
+    # Code sandbox
+    "sandbox_python": tool_sandbox_python,
+    "sandbox_shell": tool_sandbox_shell,
+    # Voice
+    "speak": tool_speak,
+    # Calendar + email
+    "get_calendar": tool_get_calendar,
+    "send_email": tool_send_email,
+    "create_reminder": tool_create_reminder,
+    # Observability
+    "dashboard": tool_dashboard,
+    # Auto-merge
+    "auto_merge": tool_auto_merge,
+    "check_merge": tool_check_merge,
+    # Bob teaches Bob
+    "store_teaching_moment": tool_store_teaching_moment,
+    # User profiling
+    "get_user_profile": tool_get_user_profile,
+    "update_user_profile": tool_update_user_profile,
+    # Autonomous research briefing
+    "run_briefing": tool_run_briefing,
+    # Self-testing
+    "run_self_tests": tool_run_self_tests,
+    "generate_tests": tool_generate_tests,
+    # World model
+    "get_world_model": tool_get_world_model,
+    "update_world": tool_update_world,
+    # Meta-tools
+    "meta_research": tool_meta_research,
+    "meta_report": tool_meta_report,
+    "meta_run": tool_meta_run,
+    # GitHub research
+    "research_github": tool_research_github,
+    # On-the-fly tool creation
+    "forge_tool": tool_forge_tool,
+    # Co-evolving critic
+    "evolve_critic": tool_evolve_critic,
+    # Event-driven triggers
+    "scan_triggers": tool_scan_triggers,
+    # DSPy prompt optimisation
+    "optimise_prompts": tool_optimise_prompts,
+    # Sub-agent isolation (CORPGEN)
+    "run_isolated_task": tool_run_isolated_task,
+    # Memory graph (A-MEM / MAGMA / Zettelkasten)
+    "link_memories": tool_link_memories,
+    "memory_graph_search": tool_memory_graph_search,
+    "auto_link_memory": tool_auto_link_memory,
+    # Skill library (Voyager-style)
+    "save_skill": tool_save_skill,
+    "recall_skill": tool_recall_skill,
+    "list_skills": tool_list_skills,
+    "get_skill": tool_get_skill,
+    "archive_skill": tool_archive_skill,
 }
 
 # ---------------------------------------------------------------------------
@@ -253,6 +715,7 @@ TOOL_CATEGORIES: Dict[str, set] = {
     },
     "memory": {
         "research_memory_search", "semantic_memory_search",
+        "link_memories", "memory_graph_search", "auto_link_memory",
     },
     "scheduler": {
         "schedule_job", "list_scheduled_jobs", "disable_scheduled_job",
@@ -271,6 +734,41 @@ TOOL_CATEGORIES: Dict[str, set] = {
     "agent_team": {
         "agent_team_run", "agent_team_status",
     },
+    "self_awareness": {
+        "run_retro", "get_patterns", "self_improve", "run_experiment",
+        "optimise_prompts", "memory_decay", "evolve_critic", "scan_triggers",
+    },
+    "research": {
+        "research_github", "forge_tool", "meta_research", "meta_report", "run_briefing",
+        "run_learning", "rag_search", "rag_ingest", "rag_store", "browse_and_extract",
+    },
+    "agents": {
+        "spawn_agents",
+    },
+    "code": {
+        "run_command", "execute_python", "sandbox_python", "sandbox_shell",
+    },
+    "communication": {
+        "send_email", "save_research_note", "speak", "get_calendar", "create_reminder",
+    },
+    "monitoring": {
+        "dashboard", "scan_triggers", "check_merge", "auto_merge",
+    },
+    "learning": {
+        "store_teaching_moment", "evolve_critic",
+    },
+    "user": {
+        "get_user_profile", "update_user_profile", "get_world_model", "update_world",
+    },
+    "testing": {
+        "run_self_tests", "generate_tests", "meta_run",
+    },
+    "agent_tasks": {
+        "run_isolated_task",
+    },
+    "skill_library": {
+        "save_skill", "recall_skill", "list_skills", "get_skill", "archive_skill",
+    },
 }
 
 # Intent keywords that map user messages to tool categories
@@ -288,6 +786,8 @@ _INTENT_KEYWORDS: Dict[str, List[str]] = {
     "sessions": ["session", "spawn", "terminal"],
     "custom": ["create tool", "custom tool", "build tool", "make tool", "new tool"],
     "agent_team": ["agent team", "autonomous", "refactor", "modify code", "code change", "implement feature", "fix bug", "add feature"],
+    "skill_library": ["skill", "save skill", "recall skill", "remember how", "list skills", "what skills", "reuse", "past task", "learned"],
+    "agent_tasks": ["isolated", "sub-task", "subtask", "separate task", "run in isolation", "parallel task"],
 }
 
 # Base categories always included for safety (file, code, memory)

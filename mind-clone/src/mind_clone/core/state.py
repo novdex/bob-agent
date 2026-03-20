@@ -150,7 +150,7 @@ CIRCUIT_STATE_DEFAULT = {"failures": 0, "last_failure": None, "open": False}
 # Queues
 COMMAND_QUEUE: Any = None
 COMMAND_QUEUE_WORKER_TASK: Any = None
-COMMAND_QUEUE_WORKER_TASKS: List[Any] = []
+COMMAND_QUEUE_WORKER_TASKS: Dict[int, Any] = {}
 COMMAND_QUEUE_LANE_SEMAPHORES: Dict[str, Any] = {}
 TASK_QUEUE: Any = None
 TASK_QUEUE_IDS: set = set()

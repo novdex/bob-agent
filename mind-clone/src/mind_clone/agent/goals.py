@@ -17,7 +17,15 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
-from ..database.models import AutonomousGoal, ResearchNote
+from ..database.models import ResearchNote
+
+# AutonomousGoal is not in the DB schema — using ScheduledJob for autonomous goals instead.
+# This class is kept for API compatibility but uses a stub model.
+class AutonomousGoal:
+    """Stub matching the expected interface. Real goals use ScheduledJob."""
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items():
+            setattr(self, k, v)
 from ..database.session import SessionLocal
 
 logger = logging.getLogger("mind_clone.agent.goals")
@@ -59,6 +67,17 @@ DEFAULT_GOALS: List[Dict[str, Any]] = [
         ),
         "priority": 40,
         "interval_seconds": 24 * 3600,  # every 24 hours
+    },
+    {
+        "goal_key": "proactive_checkin",
+        "title": "Proactive Check-in with Arsh",
+        "description": (
+            "Generate a genuine, unprompted check-in message for Arsh. Share an insight, "
+            "interesting AI development, autonomous work update, or thought about the Bob "
+            "project. Be concise and worth reading. Send via Telegram."
+        ),
+        "priority": 70,
+        "interval_seconds": 8 * 3600,  # every 8 hours
     },
 ]
 

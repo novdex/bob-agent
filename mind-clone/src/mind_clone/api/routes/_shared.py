@@ -941,6 +941,15 @@ async def app_lifespan(_: FastAPI):
     if CRON_ENABLED and (CRON_SUPERVISOR_TASK is None or CRON_SUPERVISOR_TASK.done()):
         CRON_SUPERVISOR_TASK = asyncio.create_task(cron_supervisor_loop())
 
+    # Seed proactive check-in scheduled job
+    try:
+        from ...services.proactive import ensure_checkin_job_seeded
+        seeded = ensure_checkin_job_seeded()
+        if seeded:
+            log.info("Proactive check-in job seeded")
+    except Exception as _proactive_err:
+        log.warning("PROACTIVE_SEED_FAIL error=%s", str(_proactive_err)[:200])
+
     try:
         yield
     finally:

@@ -117,7 +117,8 @@ class TestSanitizeToolPairs:
         assert len(result) == 3
 
     def test_partial_match_strips_all(self):
-        """If ANY tool_call_id is missing its response, strip ALL tool_calls."""
+        """Partial match: tc_a has a response (kept), tc_b has none (stripped).
+        The assistant keeps only tc_a in tool_calls."""
         messages = [
             {"role": "assistant", "content": "multi",
              "tool_calls": [
@@ -125,12 +126,34 @@ class TestSanitizeToolPairs:
                  {"id": "tc_b", "function": {"name": "read_file", "arguments": "{}"}},
              ]},
             {"role": "tool", "content": "result_a", "tool_call_id": "tc_a"},
-            # tc_b response missing!
+            # tc_b response missing — should be stripped
         ]
         result = _sanitize_tool_pairs(messages)
-        # Assistant should be stripped of tool_calls, and orphan tool response for tc_a dropped
         assistant = [m for m in result if m["role"] == "assistant"][0]
-        assert "tool_calls" not in assistant
+        # tc_a is matched so assistant keeps tool_calls with only tc_a
+        assert "tool_calls" in assistant
+        ids = [tc["id"] for tc in assistant["tool_calls"]]
+        assert "tc_a" in ids
+        assert "tc_b" not in ids
+
+    def test_duplicate_tool_call_ids_second_stripped(self):
+        """Regression: duplicate tool_call IDs across turns caused HTTP 400.
+        Second occurrence with no response should have tool_calls stripped."""
+        messages = [
+            {"role": "assistant", "content": "first",
+             "tool_calls": [{"id": "search_web:7", "function": {"name": "search_web", "arguments": "{}"}}]},
+            {"role": "tool", "content": "result1", "tool_call_id": "search_web:7"},
+            {"role": "assistant", "content": "done"},
+            {"role": "user", "content": "follow up"},
+            # Same ID reused — no response for this one
+            {"role": "assistant", "content": "second",
+             "tool_calls": [{"id": "search_web:7", "function": {"name": "search_web", "arguments": "{}"}}]},
+        ]
+        result = _sanitize_tool_pairs(messages)
+        # The second assistant (content="second") should have tool_calls stripped
+        second_asst = [m for m in result if m.get("role") == "assistant" and m.get("content") == "second"]
+        assert len(second_asst) == 1
+        assert "tool_calls" not in second_asst[0]
 
 
 # ---------------------------------------------------------------------------

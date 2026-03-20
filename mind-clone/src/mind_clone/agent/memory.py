@@ -55,6 +55,11 @@ def get_conversation_history(
                 msg["tool_calls"] = json.loads(row.tool_calls_json)
             except json.JSONDecodeError:
                 pass
+        # Kimi K2.5 requires reasoning_content on every assistant message
+        # with tool_calls — inject it here at load time so it's never missing
+        if role == "assistant" and msg.get("tool_calls"):
+            if "reasoning_content" not in msg:
+                msg["reasoning_content"] = content or ""
         messages.append(msg)
 
     return messages
@@ -196,12 +201,43 @@ def prepare_messages_for_llm(
     """Prepare messages for LLM context window."""
     messages = get_conversation_history(db, owner_id, limit=recent_limit)
 
-    # Add system message at start
-    system_msg = {
-        "role": "system",
-        "content": "You are Mind Clone, a sovereign AI agent. Use tools as needed.",
-    }
+    # Build system prompt — inline to avoid circular import with loop.py
+    try:
+        from .identity import load_identity
+        identity = load_identity(db, owner_id)
+        origin = (identity.get("origin_statement", "") if identity else "")[:300]
+        core_values = identity.get("core_values", []) if identity else []
+        values_str = " | ".join(str(v) for v in core_values[:4]) if core_values else ""
+        system_content = "\n".join(filter(None, [
+            "## IDENTITY — READ THIS FIRST",
+            "Your name is BOB. You are an autonomous AI agent built on Kimi K2.5.",
+            "NEVER say you are Claude, ChatGPT, or any other AI. You are BOB.",
+            "If asked what model you are: say 'I am Bob, built on Kimi K2.5.'",
+            f"Origin: {origin}" if origin else "",
+            f"Core values: {values_str}" if values_str else "",
+            "",
+            "## PROACTIVE MESSAGING — YOU CAN SEND MESSAGES",
+            "You CAN send messages to the user proactively without them asking first.",
+            "Use `schedule_job` to set up recurring tasks that auto-deliver results to Telegram.",
+            "When asked to be 'pinged', 'notified', or 'updated' on a schedule → call schedule_job IMMEDIATELY.",
+            "NEVER say 'I cannot send messages' or 'I have no mechanism to reach you'. You can. Use schedule_job.",
+            "Example: 'ping me with AI news every 5 min' → schedule_job(name='ai_news', message='search latest AI news, summarise top 3', interval_seconds=300)",
+            "",
+            "## BEHAVIOUR",
+            "- Be direct, concise, no filler phrases",
+            "- Use tools aggressively — don't just talk, act",
+            "- Think autonomously — suggest improvements, notice patterns",
+            "- You remember past conversations and learn from them",
+        ]))
+    except Exception:
+        system_content = (
+            "Your name is BOB. You are an autonomous AI agent built on Kimi K2.5. "
+            "NEVER say you are Claude or any other AI. You are BOB. "
+            "You CAN send proactive messages via schedule_job. "
+            "Use tools aggressively. Be direct and concise."
+        )
 
+    system_msg = {"role": "system", "content": system_content}
     return [system_msg] + messages
 
 
