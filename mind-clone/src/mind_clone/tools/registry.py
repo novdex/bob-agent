@@ -134,6 +134,15 @@ def tool_self_improve(args: dict) -> dict:
         return {"ok": False, "error": str(e)[:200]}
 
 
+def tool_run_experiment(args: dict) -> dict:
+    """Tool: Run Bob's Karpathy-style nightly self-improvement experiment loop once."""
+    try:
+        from ..services.auto_research import tool_run_experiment as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
 def tool_get_patterns(args: dict) -> dict:
     """Return Arsh's conversation patterns and interests."""
     owner_id = int(args.get("_owner_id", 1))
@@ -275,6 +284,8 @@ TOOL_DISPATCH: Dict[str, Callable[[dict], dict]] = {
     "get_patterns": tool_get_patterns,
     # Self-improvement
     "self_improve": tool_self_improve,
+    # Karpathy experiment loop
+    "run_experiment": tool_run_experiment,
     # Skill library (Voyager-style)
     "save_skill": tool_save_skill,
     "recall_skill": tool_recall_skill,
@@ -349,7 +360,7 @@ TOOL_CATEGORIES: Dict[str, set] = {
         "agent_team_run", "agent_team_status",
     },
     "self_awareness": {
-        "run_retro", "get_patterns", "self_improve",
+        "run_retro", "get_patterns", "self_improve", "run_experiment",
     },
     "skill_library": {
         "save_skill", "recall_skill", "list_skills", "get_skill", "archive_skill",

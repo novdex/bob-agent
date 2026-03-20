@@ -11,7 +11,7 @@ import uuid
 from typing import Optional
 
 from sqlalchemy import (
-    Column, Integer, String, DateTime, ForeignKey, Text, LargeBinary, Boolean, func
+    Column, Integer, String, DateTime, ForeignKey, Text, LargeBinary, Boolean, Float, func
 )
 from sqlalchemy.ext.mutable import MutableList, MutableDict
 from sqlalchemy.types import JSON
@@ -499,6 +499,25 @@ class SkillVersion(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
+class ExperimentLog(Base):
+    """Karpathy-style self-improvement experiment audit trail."""
+    __tablename__ = "experiment_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    hypothesis_title = Column(String, nullable=False)
+    target_file = Column(String, nullable=True)
+    score_before = Column(Float, nullable=False, default=0.0)
+    score_after = Column(Float, nullable=False, default=0.0)
+    improved = Column(Boolean, nullable=False, default=False)
+    committed = Column(Boolean, nullable=False, default=False)
+    reverted = Column(Boolean, nullable=False, default=False)
+    tests_passed = Column(Boolean, nullable=False, default=False)
+    error_msg = Column(Text, nullable=True)
+    hypothesis_json = Column(Text, nullable=False, default="{}")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 class SkillRun(Base):
     """Skill execution audit trail."""
     __tablename__ = "skill_runs"
@@ -548,6 +567,7 @@ __all__ = [
     "ExecutionEvent",
     "MemoryVector",
     "OpsAuditEvent",
+    "ExperimentLog",
     "SkillProfile",
     "SkillVersion",
     "SkillRun",

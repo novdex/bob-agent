@@ -109,6 +109,19 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("Failed to seed retro job: %s", exc)
 
+    # Seed nightly experiment job (Karpathy-style self-improvement loop)
+    try:
+        from ..services.auto_research import ensure_nightly_experiment_job
+        from ..database.session import SessionLocal as _SessionLocal
+        _db = _SessionLocal()
+        try:
+            ensure_nightly_experiment_job(_db, owner_id=1)
+            logger.info("Nightly experiment job ensured")
+        finally:
+            _db.close()
+    except Exception as exc:
+        logger.warning("Failed to seed nightly experiment job: %s", exc)
+
     # Start cron supervisor (runs scheduled jobs including proactive check-ins)
     cron_task = None
     try:

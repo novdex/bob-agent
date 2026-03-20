@@ -600,6 +600,25 @@ SKILL_LIBRARY_SCHEMAS = [
 
 ALL_TOOL_SCHEMAS.extend(SKILL_LIBRARY_SCHEMAS)
 
+# Karpathy experiment loop schema
+ALL_TOOL_SCHEMAS.append({
+    "type": "function",
+    "function": {
+        "name": "run_experiment",
+        "description": (
+            "Run Bob's Karpathy-style autonomous self-improvement experiment loop. "
+            "Bob will read his own codebase, generate a hypothesis, implement a small change, "
+            "run tests, measure the composite score, and keep the change if it improved things "
+            "or revert it if not. Results are saved to ExperimentLog and reported via Telegram."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+})
+
 
 def get_tool_schemas() -> List[Dict[str, Any]]:
     """Get all tool schemas."""
