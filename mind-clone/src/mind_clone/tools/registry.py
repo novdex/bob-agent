@@ -110,6 +110,13 @@ from .agent_team import (
     tool_agent_team_run,
     tool_agent_team_status,
 )
+from .skill_library import (
+    tool_save_skill,
+    tool_recall_skill,
+    tool_list_skills,
+    tool_get_skill,
+    tool_archive_skill,
+)
 
 logger = logging.getLogger("mind_clone.tools")
 
@@ -268,6 +275,12 @@ TOOL_DISPATCH: Dict[str, Callable[[dict], dict]] = {
     "get_patterns": tool_get_patterns,
     # Self-improvement
     "self_improve": tool_self_improve,
+    # Skill library (Voyager-style)
+    "save_skill": tool_save_skill,
+    "recall_skill": tool_recall_skill,
+    "list_skills": tool_list_skills,
+    "get_skill": tool_get_skill,
+    "archive_skill": tool_archive_skill,
 }
 
 # ---------------------------------------------------------------------------
@@ -338,6 +351,9 @@ TOOL_CATEGORIES: Dict[str, set] = {
     "self_awareness": {
         "run_retro", "get_patterns", "self_improve",
     },
+    "skill_library": {
+        "save_skill", "recall_skill", "list_skills", "get_skill", "archive_skill",
+    },
 }
 
 # Intent keywords that map user messages to tool categories
@@ -355,6 +371,7 @@ _INTENT_KEYWORDS: Dict[str, List[str]] = {
     "sessions": ["session", "spawn", "terminal"],
     "custom": ["create tool", "custom tool", "build tool", "make tool", "new tool"],
     "agent_team": ["agent team", "autonomous", "refactor", "modify code", "code change", "implement feature", "fix bug", "add feature"],
+    "skill_library": ["skill", "save skill", "recall skill", "remember how", "list skills", "what skills", "reuse", "past task", "learned"],
 }
 
 # Base categories always included for safety (file, code, memory)
