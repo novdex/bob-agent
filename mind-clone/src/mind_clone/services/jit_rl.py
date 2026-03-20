@@ -61,6 +61,20 @@ def retrieve_high_value_experiences(
         db.close()
 
 
+def get_jit_examples_block(owner_id: int, user_message: str) -> str:
+    """Return JitRL examples as a string block."""
+    try:
+        experiences = retrieve_high_value_experiences(owner_id, user_message)
+        if not experiences:
+            return ""
+        lines = ["[JitRL] High-value past experiences for this type of task:"]
+        for ex in experiences:
+            lines.append(f"• Situation: {ex['situation']} → Action: {ex['action']} → {ex['outcome'].upper()}")
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
+
 def inject_jit_examples(owner_id: int, user_message: str, messages: list) -> None:
     """Inject high-value past experiences as few-shot examples."""
     try:

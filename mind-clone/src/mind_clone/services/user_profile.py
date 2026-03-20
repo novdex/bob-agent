@@ -123,6 +123,22 @@ def update_profile_from_turn(
     threading.Thread(target=_run, daemon=True).start()
 
 
+def get_profile_context_block(owner_id: int) -> str:
+    """Return profile context as a string block."""
+    try:
+        profile = _load_profile(owner_id)
+        return (
+            f"[USER PROFILE] Name: {profile.get('name','User')} | "
+            f"Style: {profile.get('communication_style','')} | "
+            f"Response length: {profile.get('preferred_response_length','')}\n"
+            f"Interests: {', '.join(profile.get('interests',[])[:5])}\n"
+            f"Active projects: {', '.join(profile.get('active_projects',[])[:3])}\n"
+            f"Dislikes: {', '.join(profile.get('dislikes',[])[:3])}"
+        )
+    except Exception:
+        return ""
+
+
 def inject_profile_context(
     owner_id: int,
     messages: list,

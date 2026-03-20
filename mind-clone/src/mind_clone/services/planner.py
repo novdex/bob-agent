@@ -82,6 +82,21 @@ def generate_plan(task: str) -> Optional[str]:
     return None
 
 
+def get_plan_block(user_message: str) -> str:
+    """Return plan as a string block (for safe pre-history injection)."""
+    if not needs_planning(user_message):
+        return ""
+    plan = generate_plan(user_message)
+    if not plan:
+        return ""
+    return (
+        "[EXECUTION PLAN] Follow this plan step by step to complete the task:\n\n"
+        + plan +
+        "\n\nWork through each step systematically. Use tools as needed. "
+        "If a step fails, try an alternative approach before giving up."
+    )
+
+
 def inject_plan_context(
     user_message: str,
     messages: list,
