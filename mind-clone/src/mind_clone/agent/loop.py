@@ -594,6 +594,18 @@ def run_agent_turn(
             except Exception:
                 pass
 
+            # 8. Bob teaches Bob — store high-quality exchanges
+            try:
+                import threading
+                from ..services.bob_teaches_bob import store_teaching_moment
+                threading.Thread(
+                    target=store_teaching_moment,
+                    args=(owner_id, user_message, content),
+                    daemon=True,
+                ).start()
+            except Exception:
+                pass
+
             return content
 
         # Save assistant message with tool calls

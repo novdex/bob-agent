@@ -191,6 +191,118 @@ def tool_memory_graph_search(args: dict) -> dict:
         return {"ok": False, "error": str(e)[:200]}
 
 
+def tool_browse_and_extract(args: dict) -> dict:
+    try:
+        from ..services.browser_agent import tool_browse_and_extract as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_rag_search(args: dict) -> dict:
+    try:
+        from ..services.knowledge_base import tool_rag_search as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_rag_ingest(args: dict) -> dict:
+    try:
+        from ..services.knowledge_base import tool_rag_ingest as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_rag_store(args: dict) -> dict:
+    try:
+        from ..services.knowledge_base import tool_rag_store as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_spawn_agents(args: dict) -> dict:
+    try:
+        from ..services.agent_spawner import tool_spawn_agents as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_run_learning(args: dict) -> dict:
+    try:
+        from ..services.continuous_learner import tool_run_learning as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_sandbox_python(args: dict) -> dict:
+    try:
+        from ..services.code_sandbox import tool_sandbox_python as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_sandbox_shell(args: dict) -> dict:
+    try:
+        from ..services.code_sandbox import tool_sandbox_shell as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_speak(args: dict) -> dict:
+    try:
+        from ..services.voice_interface import tool_speak as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_get_calendar(args: dict) -> dict:
+    try:
+        from ..services.calendar_email import tool_get_calendar as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_send_email(args: dict) -> dict:
+    try:
+        from ..services.calendar_email import tool_send_email as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_create_reminder(args: dict) -> dict:
+    try:
+        from ..services.calendar_email import tool_create_reminder as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_dashboard(args: dict) -> dict:
+    try:
+        from ..services.observability import tool_dashboard as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_auto_merge(args: dict) -> dict:
+    try:
+        from ..services.auto_merge import tool_auto_merge as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_check_merge(args: dict) -> dict:
+    try:
+        from ..services.auto_merge import tool_check_merge as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+def tool_store_teaching_moment(args: dict) -> dict:
+    try:
+        from ..services.bob_teaches_bob import tool_store_teaching_moment as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
 def tool_get_user_profile(args: dict) -> dict:
     try:
         from ..services.user_profile import tool_get_user_profile as _impl
@@ -491,6 +603,32 @@ TOOL_DISPATCH: Dict[str, Callable[[dict], dict]] = {
     "run_experiment": tool_run_experiment,
     # Ebbinghaus memory decay
     "memory_decay": tool_memory_decay,
+    # Browser agent
+    "browse_and_extract": tool_browse_and_extract,
+    # RAG knowledge base
+    "rag_search": tool_rag_search,
+    "rag_ingest": tool_rag_ingest,
+    "rag_store": tool_rag_store,
+    # Multi-agent spawning
+    "spawn_agents": tool_spawn_agents,
+    # Continuous learning
+    "run_learning": tool_run_learning,
+    # Code sandbox
+    "sandbox_python": tool_sandbox_python,
+    "sandbox_shell": tool_sandbox_shell,
+    # Voice
+    "speak": tool_speak,
+    # Calendar + email
+    "get_calendar": tool_get_calendar,
+    "send_email": tool_send_email,
+    "create_reminder": tool_create_reminder,
+    # Observability
+    "dashboard": tool_dashboard,
+    # Auto-merge
+    "auto_merge": tool_auto_merge,
+    "check_merge": tool_check_merge,
+    # Bob teaches Bob
+    "store_teaching_moment": tool_store_teaching_moment,
     # User profiling
     "get_user_profile": tool_get_user_profile,
     "update_user_profile": tool_update_user_profile,
@@ -602,6 +740,22 @@ TOOL_CATEGORIES: Dict[str, set] = {
     },
     "research": {
         "research_github", "forge_tool", "meta_research", "meta_report", "run_briefing",
+        "run_learning", "rag_search", "rag_ingest", "rag_store", "browse_and_extract",
+    },
+    "agents": {
+        "spawn_agents",
+    },
+    "code": {
+        "run_command", "execute_python", "sandbox_python", "sandbox_shell",
+    },
+    "communication": {
+        "send_email", "save_research_note", "speak", "get_calendar", "create_reminder",
+    },
+    "monitoring": {
+        "dashboard", "scan_triggers", "check_merge", "auto_merge",
+    },
+    "learning": {
+        "store_teaching_moment", "evolve_critic",
     },
     "user": {
         "get_user_profile", "update_user_profile", "get_world_model", "update_world",

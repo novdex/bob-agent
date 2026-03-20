@@ -109,6 +109,19 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("Failed to seed retro job: %s", exc)
 
+    # Seed continuous learning job (every 6h)
+    try:
+        from ..services.continuous_learner import ensure_learning_job
+        from ..database.session import SessionLocal as _SL4
+        _db4 = _SL4()
+        try:
+            ensure_learning_job(_db4, owner_id=1)
+            logger.info("Continuous learning job ensured")
+        finally:
+            _db4.close()
+    except Exception as exc:
+        logger.warning("Failed to seed learning job: %s", exc)
+
     # Seed morning briefing job (7am UTC daily)
     try:
         from ..services.autonomous_research import ensure_morning_briefing_job
