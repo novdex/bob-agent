@@ -504,6 +504,103 @@ ALL_TOOL_SCHEMAS = [
 ]
 
 
+SKILL_LIBRARY_SCHEMAS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "save_skill",
+            "description": (
+                "Save a completed task as a reusable skill in Bob's Voyager-style skill library. "
+                "Call this AFTER successfully completing any non-trivial task so Bob can reuse "
+                "the approach next time. Include step-by-step instructions in the body."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string", "description": "Short descriptive name for this skill"},
+                    "body": {"type": "string", "description": "Step-by-step instructions that worked"},
+                    "trigger_hints": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Keywords/phrases that should trigger this skill in future",
+                    },
+                    "intent": {"type": "string", "description": "One-sentence description of what this skill does"},
+                    "skill_key": {"type": "string", "description": "Optional unique key (auto-generated if omitted)"},
+                },
+                "required": ["title", "body"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "recall_skill",
+            "description": (
+                "Search Bob's skill library for relevant past approaches before starting a task. "
+                "Call this at the START of complex tasks — Bob may have solved something similar before."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Description of the task you're about to do"},
+                    "top_k": {"type": "integer", "description": "Max skills to return (default 3)", "default": 3},
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_skills",
+            "description": "List all skills in Bob's library with titles, usage counts, and trigger hints.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "description": "Filter: 'active', 'archived', or 'all' (default: active)",
+                        "enum": ["active", "archived", "all"],
+                    },
+                    "limit": {"type": "integer", "description": "Max to return (default 20)", "default": 20},
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_skill",
+            "description": "Get full details of a specific skill including its complete instructions.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "skill_id": {"type": "integer", "description": "The numeric ID of the skill"},
+                },
+                "required": ["skill_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "archive_skill",
+            "description": "Archive a skill so it no longer gets auto-matched (kept in history).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "skill_id": {"type": "integer", "description": "The numeric ID of the skill to archive"},
+                },
+                "required": ["skill_id"],
+            },
+        },
+    },
+]
+
+ALL_TOOL_SCHEMAS.extend(SKILL_LIBRARY_SCHEMAS)
+
+
 def get_tool_schemas() -> List[Dict[str, Any]]:
     """Get all tool schemas."""
     return list(ALL_TOOL_SCHEMAS)
