@@ -1,223 +1,282 @@
-# Mind Clone Agent
+# Bob — Open Source Personal AGI Agent
 
-A sovereign AI agent platform with reasoning, memory, autonomy, and tool mastery.
+> *Not a chatbot wrapper. A self-improving autonomous agent that learns, plans, and acts.*
 
-## Overview
+Bob is a personal AGI agent you run on your own machine. Talk to it via Telegram or web chat. It remembers everything, learns from every mistake, researches the internet autonomously, and improves its own code every night while you sleep.
 
-Mind Clone Agent is a modular Python-based AI agent system that provides:
+---
 
-- **Reasoning**: Multi-step reasoning with iterative tool use
-- **Memory**: Conversation history with vector embeddings (GloVe)
-- **Autonomy**: Task engine with planning and execution
-- **Learning**: Research memory and self-improvement notes
-- **Tools**: 25+ tools including web search, file operations, code execution
-- **Communication**: Telegram bot, email (SMTP), REST API
+## What makes Bob different
+
+Most AI tools are just API wrappers. Bob is an agent with:
+
+- **Persistent memory** — remembers everything across sessions, links knowledge together in a graph
+- **Self-improvement** — reads its own code every night, runs experiments, keeps what works, reverts what doesn't
+- **Real autonomy** — spawns sub-agents, monitors signals, acts proactively without being asked
+- **117 tools** — web search, browser control, code execution, email, calendar, voice, file ops, and more
+- **Learns from mistakes** — writes verbal reflections after every failure, never repeats the same error
+- **Gets better over time** — every conversation makes Bob smarter via Bob Teaches Bob
+
+---
+
+## Features
+
+### 🧠 Intelligence
+| Feature | What it does |
+|---|---|
+| Multi-turn Planning | Writes a numbered execution plan before any complex task |
+| Tree of Thoughts | Generates 3 approaches, evaluates each, picks the best |
+| Generator → Verifier | Separate LLM call critiques every plan before execution |
+| Constitutional AI | Self-critiques responses against 7 core principles |
+| Reflexion | Learns from every failure: "I tried X, failed because Y, next time Z" |
+| ReAct + Reflection | Structured observe/reason/act/reflect after every multi-step task |
+| Self-Play | Devil's advocate debate for opinion/evaluation questions |
+
+### 💾 Memory
+| Feature | What it does |
+|---|---|
+| Memory Graph | Zettelkasten-style linked knowledge network (A-MEM / MAGMA) |
+| Ebbinghaus Decay | Important memories stay sharp, noise fades automatically |
+| Episodic Memory | Recalls similar past situations before acting |
+| RAG Knowledge Base | Semantic vector search across all stored knowledge |
+| Context Compression | Summarises old turns when context gets too large |
+| JitRL | Retrieves highest-scoring past experiences as few-shot examples |
+
+### 🚀 Self-Improvement
+| Feature | What it does |
+|---|---|
+| Karpathy Loop | Nightly 2am: read code → hypotheses → implement → test → keep/revert |
+| DSPy Prompt Optimiser | Auto-tunes tool descriptions based on real failure data |
+| Co-Evolving Critic | Critic principles update as Bob improves — never goes stale |
+| Bob Teaches Bob | Best conversations stored as teaching moments for future Bob |
+| Auto-merge | Merges to main automatically after 3+ consecutive improvements |
+
+### 🔧 Tools & Capabilities
+| Tool | What it does |
+|---|---|
+| Browser Agent | Navigates real websites, fills forms, extracts structured data |
+| Code Sandbox | Safe isolated Python/shell execution with timeout |
+| Multi-agent Spawning | Parallel sub-agents for complex multi-part tasks |
+| GitHub Research | Searches repos, reads READMEs, stores insights in knowledge graph |
+| Continuous Learning | Learns from arXiv, GitHub trending, Hacker News every 6 hours |
+| Voice Interface | Sends voice message responses to Telegram |
+| Calendar + Email | Get events, send emails, create reminders |
+| Observability Dashboard | Live: tool success rates, experiments, memory stats, jobs |
+
+### 🤖 Autonomous Behaviours
+- **7am daily**: Morning research briefing on your interests → Telegram
+- **Every 6h**: Learns from arXiv, GitHub, Hacker News automatically
+- **2am nightly**: Self-improvement experiment loop
+- **3am nightly**: Ebbinghaus memory decay and pruning
+- **Event-driven**: Fires on error spikes, memory bloat, stale experiments
+
+---
+
+## Quick Start
+
+### Prerequisites
+- Python 3.11+
+- [Moonshot AI API key](https://platform.moonshot.cn) (for Kimi K2.5)
+- Telegram Bot Token (from [@BotFather](https://t.me/botfather))
+
+### Install
+
+```bash
+git clone https://github.com/YOUR_USERNAME/bob-agent.git
+cd bob-agent/mind-clone
+pip install -e .
+```
+
+### Configure
+
+```bash
+cp .env.example .env
+# Edit .env with your keys
+```
+
+Minimum required in `.env`:
+```env
+KIMI_API_KEY=your_moonshot_api_key_here
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
+```
+
+### Run
+
+```bash
+python -m mind_clone --web
+```
+
+Bob starts on `http://localhost:8000`. Set up your Telegram webhook or use polling mode:
+
+```bash
+python -m mind_clone --telegram-poll
+```
+
+### Run DB migrations (first time)
+
+```bash
+python migrate_db.py
+```
+
+---
 
 ## Architecture
 
 ```
-mind-clone/
-├── src/mind_clone/
-│   ├── config.py          # Pydantic settings
-│   ├── runner.py          # CLI entry point
-│   ├── database/          # SQLAlchemy models
-│   ├── agent/             # Core agent logic
-│   ├── api/               # FastAPI endpoints
-│   ├── core/              # Infrastructure (state, security, etc.)
-│   ├── services/          # Background services
-│   ├── tools/             # Tool implementations
-│   └── utils/             # Utility functions
-└── tests/                 # Test suite
+bob-agent/
+└── mind-clone/
+    ├── src/mind_clone/
+    │   ├── agent/          # Core reasoning loop, memory, identity
+    │   │   ├── loop.py     # Main agent turn (all hooks wired here)
+    │   │   ├── memory.py   # Message history + context management
+    │   │   ├── episodes.py # Episodic memory recall
+    │   │   ├── recall.py   # Long-term memory injection
+    │   │   └── vectors.py  # GloVe embeddings (no API key needed)
+    │   ├── services/       # 40+ intelligence services
+    │   │   ├── auto_research.py      # Karpathy experiment loop
+    │   │   ├── reflexion.py          # Verbal RL from failures
+    │   │   ├── verifier.py           # Generator → Verifier → Reviser
+    │   │   ├── memory_graph.py       # Zettelkasten knowledge graph
+    │   │   ├── ebbinghaus.py         # Memory decay + spaced repetition
+    │   │   ├── constitutional.py     # Self-critique (7 principles)
+    │   │   ├── planner.py            # Multi-turn planning
+    │   │   ├── tree_of_thoughts.py   # Multi-path reasoning
+    │   │   ├── observability.py      # Dashboard
+    │   │   ├── bob_teaches_bob.py    # Self-compounding learning
+    │   │   └── ...                   # 30+ more
+    │   ├── tools/          # 117 tool implementations
+    │   ├── database/       # SQLAlchemy models + session
+    │   └── api/            # FastAPI routes + lifespan
+    ├── tests/              # 161+ tests
+    ├── BOB_RESEARCH.md     # Edit this to steer nightly experiments
+    ├── e2e_test.py         # End-to-end test (19 checks)
+    └── migrate_db.py       # DB migration script
 ```
 
-## Installation
+### Data flow
 
-```bash
-# Clone the repository
-git clone <repository-url>
-cd mind-clone
-
-# Install in development mode
-pip install -e .
-
-# Or install from PyPI (when published)
-pip install mind-clone
 ```
+User (Telegram/API)
+    → FastAPI
+    → Agent Loop
+        → Inject: user profile, world model, JitRL examples
+        → Inject: skill playbooks, episodic memories, reflexion lessons
+        → Inject: execution plan, tree of thoughts
+        → Context compression
+        → Kimi K2.5 LLM
+        → Tool execution (117 tools)
+        → Verify response (Generator → Verifier)
+        → Constitutional review
+        → Co-critic check
+        → Self-play improvement
+        → Background: update profile, world model, teach Bob, reflect
+    → Response → User
+```
+
+---
 
 ## Configuration
 
-Create a `.env` file in the project root:
+Key `.env` options:
 
-```bash
+```env
 # Required
-KIMI_API_KEY=your_moonshot_api_key
-TELEGRAM_BOT_TOKEN=your_bot_token
-WEBHOOK_BASE_URL=https://your-domain.com
+KIMI_API_KEY=                    # Moonshot AI key
+TELEGRAM_BOT_TOKEN=              # From @BotFather
 
 # Optional
-SMTP_HOST=smtp.gmail.com
-SMTP_USERNAME=your_email@gmail.com
-SMTP_PASSWORD=your_app_password
-POLICY_PACK=dev  # dev | staging | prod
+SMTP_HOST=smtp.gmail.com         # For email tools
+SMTP_USERNAME=                   # Gmail address
+SMTP_PASSWORD=                   # Gmail app password
+
+# Behaviour
+AUTONOMY_MODE=openclaw_max       # or: standard
+BOB_FULL_POWER_ENABLED=false     # true = full system access (careful)
+CUSTOM_TOOL_TRUST_MODE=safe      # or: full
 ```
 
-## Usage
+---
 
-### CLI
+## Steering Bob's Self-Improvement
+
+Edit `BOB_RESEARCH.md` to control what Bob experiments on at night:
+
+```markdown
+## Current Focus
+Improve Bob's response quality and tool success rate.
+
+## Allowed Target Files
+- src/mind_clone/services/retro.py
+- src/mind_clone/tools/basic.py
+
+## Constraints
+- Max 50 lines changed per experiment
+- All tests must pass
+```
+
+Bob reads this file before every nightly experiment loop.
+
+---
+
+## The 8 AGI Pillars
+
+Bob is built around 8 intelligence pillars from `VISION.md`:
+
+1. **Reasoning** — Planning, Tree of Thoughts, Verifier, Constitutional AI
+2. **Memory** — Knowledge graph, Ebbinghaus, RAG, Episodic, JitRL
+3. **Autonomy** — Scheduled jobs, event triggers, proactive research
+4. **Learning** — Reflexion, DSPy, Co-critic, Bob Teaches Bob
+5. **Tool Mastery** — 117 tools across web, code, browser, voice, files
+6. **Self-Awareness** — Observability dashboard, retro, composite score
+7. **World Understanding** — World model, continuous learning, GitHub research
+8. **Communication** — Telegram, voice, email, multi-agent coordination
+
+---
+
+## Benchmarks & Research Basis
+
+Every feature is based on proven research:
+
+| Feature | Source | Proven Result |
+|---|---|---|
+| Karpathy Loop | autoresearch (Mar 2026) | ~100 experiments/night |
+| Reflexion | Stanford 2023 | Beats GPT-4 on many benchmarks |
+| Generator→Verifier | DeepMind Aletheia | 95.1% on IMO-Proof Bench |
+| Tree of Thoughts | Princeton/Google 2023 | Significant improvement on hard problems |
+| Co-Evolving Critic | VoltAgent 2026 | Prevents critic staleness |
+| CORPGEN Isolation | Microsoft Research 2026 | 3.5x improvement in completion rate |
+| Ebbinghaus Decay | SAGE 2025 | Beats Reflexion on all benchmarks |
+| DSPy Optimisation | Stanford DSPy | +10pp accuracy on AIME 2025 |
+| DeerFlow Multi-agent | ByteDance 2026 | #1 GitHub trending Feb 2026 |
+
+---
+
+## Running Tests
 
 ```bash
-# Start web server
-python -m mind_clone --web --host 0.0.0.0 --port 8000
+# Unit tests
+python -m pytest tests/ -q --ignore=tests/unit/test_agents.py
 
-# Start Telegram polling mode
-python -m mind_clone --telegram-poll
-
-# Run one-shot task
-python -m mind_clone --run "Analyze this file"
+# End-to-end test (19 checks)
+python e2e_test.py
 ```
 
-### Python API
-
-```python
-from mind_clone.agent.loop import run_agent_turn
-from mind_clone.database.session import get_db
-
-# Get database session
-db = next(get_db())
-
-# Run agent turn
-response = run_agent_turn(
-    db=db,
-    owner_id=1,
-    user_message="Hello, what can you do?"
-)
-print(response)
-```
-
-### FastAPI Endpoints
-
-```python
-from mind_clone.api.factory import create_app
-
-app = create_app()
-
-# Run with uvicorn
-# uvicorn mind_clone.api.factory:create_app --factory
-```
-
-## API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/heartbeat` | GET | Health check |
-| `/status/runtime` | GET | Runtime metrics |
-| `/chat` | POST | Send message to agent |
-| `/ui/tasks` | GET/POST | List/create tasks |
-| `/goals` | GET/POST | List/create goals |
-| `/telegram/webhook` | POST | Telegram webhook |
-| `/debug/blackbox` | GET | Event logs |
-
-## Tools Available
-
-### Web & Research
-- `search_web` - DuckDuckGo search
-- `read_webpage` - Extract webpage content
-- `deep_research` - Multi-source research
-
-### File Operations
-- `read_file` - Read file contents
-- `write_file` - Write file contents
-- `list_directory` - List directory contents
-
-### Code Execution
-- `run_command` - Execute shell commands
-- `execute_python` - Run Python code
-
-### Communication
-- `send_email` - Send emails via SMTP
-
-### Memory
-- `save_research_note` - Save research findings
-- `research_memory_search` - Search research notes
-- `semantic_memory_search` - Vector similarity search
-
-### Task Management
-- `create_task` - Create autonomous tasks
-- `list_tasks` - List tasks
-- `cancel_task` - Cancel tasks
-
-### Browser Automation
-- `browser_open` - Open URL in browser
-- `browser_click` - Click element
-- `browser_type` - Type text
-- `browser_screenshot` - Take screenshot
-
-## Testing
-
-```bash
-# Run all tests
-pytest
-
-# Run specific test file
-pytest tests/unit/test_config.py -v
-
-# Run with coverage
-pytest --cov=mind_clone --cov-report=html
-```
-
-## Development
-
-```bash
-# Setup development environment
-pip install -e ".[dev]"
-
-# Run linting
-flake8 src/mind_clone
-
-# Run type checking
-mypy src/mind_clone
-
-# Format code
-black src/mind_clone
-```
-
-## Project Structure
-
-### Database Models
-
-- `User` - Human owners
-- `Task` - Autonomous tasks
-- `Goal` - Long-term goals
-- `ConversationMessage` - Chat history
-- `ScheduledJob` - Cron jobs
-- `ApprovalRequest` - Pending approvals
-- `TeamAgent` - Multi-agent support
-
-### Core Modules
-
-- `state.py` - Runtime state management
-- `security.py` - Tool policies and approval gates
-- `budget.py` - Resource limiting
-- `queue.py` - Command queue management
-- `circuit.py` - Circuit breaker pattern
-- `tasks.py` - Task engine
-- `approvals.py` - Approval system
-- `goals.py` - Goal management
-- `blackbox.py` - Event logging
+---
 
 ## License
 
-MIT License - See LICENSE file for details
+MIT — use freely, modify freely, deploy commercially.
 
-## Contributing
+---
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests
-5. Submit a pull request
+## Built with
 
-## Support
+- **LLM**: [Kimi K2.5](https://platform.moonshot.cn) via Moonshot AI
+- **Framework**: FastAPI + SQLAlchemy + SQLite
+- **Embeddings**: GloVe 6B (no API key needed)
+- **Bot**: python-telegram-bot
+- **Inspired by**: Karpathy autoresearch, DeerFlow, OpenHands, Voyager, Reflexion, DeepMind Aletheia
 
-- Issues: [GitHub Issues](https://github.com/yourusername/mind-clone/issues)
-- Documentation: [Full Docs](https://mind-clone.readthedocs.io)
+---
+
+*Bob gets smarter every night. The longer you run it, the better it gets.*
