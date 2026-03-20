@@ -442,6 +442,15 @@ def run_agent_turn(
             # Also remap in the result so tool execution uses new IDs
             result["tool_calls"] = tool_calls
 
+        # Generator → Verifier → Reviser (DeepMind Aletheia)
+        # On first response for complex tasks: verify before acting
+        if content and tool_loops == 0 and not tool_calls:
+            try:
+                from ..services.verifier import maybe_verify
+                content = maybe_verify(user_message, content, owner_id)
+            except Exception as _vf_err:
+                logger.debug("VERIFIER_SKIP: %s", str(_vf_err)[:80])
+
         # If no tool calls, check for capability gap before returning
         if not tool_calls:
             # Gap detection: if LLM says "I can't", inject hint and retry
