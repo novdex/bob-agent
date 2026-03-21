@@ -36,8 +36,12 @@ class TestRunInSandbox:
         assert result["returncode"] == 1
 
     def test_run_timeout(self):
-        # Sleep longer than timeout
-        result = run_in_sandbox("sleep 30", timeout=1)
+        # Mock subprocess.run to raise TimeoutExpired immediately.
+        # Avoids Windows orphan process issues when actually running `sleep 30`.
+        import subprocess
+        from unittest.mock import patch
+        with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("sleep 30", 1)):
+            result = run_in_sandbox("sleep 30", timeout=1)
         assert result["ok"] is False
         assert "Timeout" in result.get("error", "")
 
