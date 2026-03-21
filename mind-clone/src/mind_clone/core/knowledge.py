@@ -70,7 +70,7 @@ def extract_python_symbols(file_path: str) -> Dict[str, Any]:
 
     # Module docstring
     if (tree.body and isinstance(tree.body[0], ast.Expr)
-            and isinstance(tree.body[0].value, (ast.Str, ast.Constant))):
+            and isinstance(tree.body[0].value, ast.Constant)):
         val = tree.body[0].value
         result["docstring"] = getattr(val, "s", str(getattr(val, "value", "")))[:200]
 

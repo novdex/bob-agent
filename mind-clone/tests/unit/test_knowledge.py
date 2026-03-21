@@ -84,15 +84,14 @@ def hello():
 def world():
     pass
 """)
-            f.flush()
-            
-            result = extract_python_symbols(f.name)
-            
+            fname = f.name
+        try:
+            result = extract_python_symbols(fname)
             assert len(result["functions"]) == 2
             assert any(fn["name"] == "hello" for fn in result["functions"])
             assert any(fn["name"] == "world" for fn in result["functions"])
-            
-            os.unlink(f.name)
+        finally:
+            os.unlink(fname)
 
     def test_extracts_class_definitions(self):
         """Should extract class definitions."""
@@ -101,20 +100,19 @@ def world():
 class MyClass:
     def method1(self):
         pass
-    
+
     def method2(self):
         pass
 """)
-            f.flush()
-            
-            result = extract_python_symbols(f.name)
-            
+            fname = f.name
+        try:
+            result = extract_python_symbols(fname)
             assert len(result["classes"]) == 1
             assert result["classes"][0]["name"] == "MyClass"
             assert "method1" in result["classes"][0]["methods"]
             assert "method2" in result["classes"][0]["methods"]
-            
-            os.unlink(f.name)
+        finally:
+            os.unlink(fname)
 
     def test_extracts_imports(self):
         """Should extract import statements."""
@@ -125,27 +123,25 @@ import sys
 from pathlib import Path
 from typing import List
 """)
-            f.flush()
-            
-            result = extract_python_symbols(f.name)
-            
+            fname = f.name
+        try:
+            result = extract_python_symbols(fname)
             assert len(result["imports"]) > 0
-            
-            os.unlink(f.name)
+        finally:
+            os.unlink(fname)
 
     def test_handles_syntax_error(self):
         """Should handle Python syntax errors gracefully."""
         with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
             f.write("def broken(\n  invalid syntax ::::")
-            f.flush()
-            
-            result = extract_python_symbols(f.name)
-            
+            fname = f.name
+        try:
+            result = extract_python_symbols(fname)
             assert result["classes"] == []
             assert result["functions"] == []
             assert result["imports"] == []
-            
-            os.unlink(f.name)
+        finally:
+            os.unlink(fname)
 
     def test_handles_nonexistent_file(self):
         """Should handle nonexistent files gracefully."""
@@ -162,53 +158,49 @@ from typing import List
 def func():
     pass
 ''')
-            f.flush()
-            
-            result = extract_python_symbols(f.name)
-            
+            fname = f.name
+        try:
+            result = extract_python_symbols(fname)
             assert "module docstring" in result["docstring"]
-            
-            os.unlink(f.name)
+        finally:
+            os.unlink(fname)
 
     def test_limits_function_count(self):
         """Should limit extracted functions to 50."""
         with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
             for i in range(100):
                 f.write(f"def func_{i}():\n    pass\n\n")
-            f.flush()
-            
-            result = extract_python_symbols(f.name)
-            
+            fname = f.name
+        try:
+            result = extract_python_symbols(fname)
             assert len(result["functions"]) <= 50
-            
-            os.unlink(f.name)
+        finally:
+            os.unlink(fname)
 
     def test_limits_import_count(self):
         """Should limit extracted imports to 50."""
         with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
             for i in range(100):
                 f.write(f"import module_{i}\n")
-            f.flush()
-            
-            result = extract_python_symbols(f.name)
-            
+            fname = f.name
+        try:
+            result = extract_python_symbols(fname)
             assert len(result["imports"]) <= 50
-            
-            os.unlink(f.name)
+        finally:
+            os.unlink(fname)
 
     def test_empty_file(self):
         """Should handle empty files."""
         with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
             f.write("")
-            f.flush()
-            
-            result = extract_python_symbols(f.name)
-            
+            fname = f.name
+        try:
+            result = extract_python_symbols(fname)
             assert result["classes"] == []
             assert result["functions"] == []
             assert result["imports"] == []
-            
-            os.unlink(f.name)
+        finally:
+            os.unlink(fname)
 
 
 class TestCodebaseIndex:
@@ -216,9 +208,9 @@ class TestCodebaseIndex:
 
     def test_initialization(self):
         """Should initialize with correct attributes."""
+        import pathlib
         idx = CodebaseIndex("/test/path")
-        
-        assert idx.root_path == "/test/path"
+        assert idx.root_path == str(pathlib.Path("/test/path").resolve())
         assert idx.files == []
         assert idx.symbols == {}
         assert idx.languages == {}

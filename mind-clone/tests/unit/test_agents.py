@@ -66,7 +66,7 @@ class TestAgentConfig:
     def test_log_dir_relative(self):
         cfg = AgentConfig(api_key="k", repo_root="/tmp/repo",
                          log_dir="persist/agent_logs")
-        assert cfg.log_dir == "/tmp/repo/persist/agent_logs"
+        assert cfg.log_dir == os.path.join("/tmp/repo", "persist/agent_logs")
 
 
 # =====================================================================
