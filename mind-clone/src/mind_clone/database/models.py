@@ -332,6 +332,7 @@ class SelfImprovementNote(Base):
     evidence_json = Column(Text, nullable=False, default="{}")
     priority = Column(String, index=True, nullable=False, default="medium")
     status = Column(String, index=True, nullable=False, default="open")
+    retrieval_count = Column(Integer, nullable=False, default=0)  # times injected into context
     importance = Column(Float, nullable=False, default=1.0)   # Ebbinghaus weight
     recall_count = Column(Integer, nullable=False, default=0)
     last_recalled_at = Column(DateTime(timezone=True), nullable=True)

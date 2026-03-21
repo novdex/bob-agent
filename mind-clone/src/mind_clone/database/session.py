@@ -43,6 +43,25 @@ def init_db():
                 logger.info("Migration: added meta_json column to users table")
     except Exception as e:
         logger.warning("Migration check for meta_json failed: %s", e)
+
+    # Migrate: add missing columns to self_improvement_notes
+    _sin_migrations = [
+        ("retrieval_count", "ALTER TABLE self_improvement_notes ADD COLUMN retrieval_count INTEGER NOT NULL DEFAULT 0"),
+        ("importance",      "ALTER TABLE self_improvement_notes ADD COLUMN importance REAL NOT NULL DEFAULT 1.0"),
+        ("recall_count",    "ALTER TABLE self_improvement_notes ADD COLUMN recall_count INTEGER NOT NULL DEFAULT 0"),
+        ("last_recalled_at","ALTER TABLE self_improvement_notes ADD COLUMN last_recalled_at DATETIME"),
+    ]
+    try:
+        with engine.connect() as conn:
+            sin_cols = [r[1] for r in conn.execute(text("PRAGMA table_info(self_improvement_notes)")).fetchall()]
+            for col_name, ddl in _sin_migrations:
+                if col_name not in sin_cols:
+                    conn.execute(text(ddl))
+                    conn.commit()
+                    logger.info("Migration: added %s column to self_improvement_notes", col_name)
+    except Exception as e:
+        logger.warning("Migration check for self_improvement_notes failed: %s", e)
+
     logger.info("Database initialized at %s", settings.db_file_path)
 
 
