@@ -326,85 +326,145 @@ def run_agent_turn(
     messages = prepare_messages_for_llm(db, owner_id)
     messages = _sanitize_tool_pairs(messages)
 
-    # Select and inject reasoning strategy
+    # -----------------------------------------------------------------------
+    # SAFE INJECTION PATTERN
+    # All context injections must go BEFORE the conversation history to avoid
+    # breaking Kimi's strict tool_call/tool_response ordering rules.
+    # We collect all system injections into a buffer, then insert them at
+    # position 1 (after the main system prompt, before conversation history).
+    # -----------------------------------------------------------------------
+    _injections: List[dict] = []
+
+    def _add_injection(content: str) -> None:
+        """Add a system message to the pre-history injection buffer."""
+        if content and content.strip():
+            _injections.append({"role": "system", "content": content})
+
+    # Reasoning strategy
     try:
         from .reasoning import select_reasoning_strategy, build_reasoning_prefix, track_reasoning_metrics
         strategy = select_reasoning_strategy(user_message)
         prefix = build_reasoning_prefix(strategy, user_message)
         if prefix:
-            messages.append({"role": "system", "content": prefix})
+            _add_injection(prefix)
             track_reasoning_metrics(strategy)
-            logger.debug("REASONING_STRATEGY strategy=%s", strategy)
     except Exception as _r_err:
         logger.debug("REASONING_INJECT_SKIP: %s", str(_r_err)[:100])
 
-    # Inject matching skill playbooks before LLM call
-    _inject_matching_skills(db, owner_id, user_message, messages)
-
-    # Inject predictive context (user's recurring interests + patterns)
+    # Skill playbooks
     try:
-        from ..services.prediction import inject_predictive_context
-        inject_predictive_context(db, owner_id, user_message, messages)
+        from ..services.skills import select_active_skills_for_prompt
+        skill_blocks = select_active_skills_for_prompt(db, owner_id, user_message, top_k=3)
+        if skill_blocks:
+            _add_injection("[SKILL PLAYBOOKS]\n" + "\n\n".join(skill_blocks))
+    except Exception:
+        pass
+
+    # Predictive context
+    try:
+        from ..services.prediction import get_predictive_context_block
+        pred_block = get_predictive_context_block(db, owner_id, user_message)
+        if pred_block:
+            _add_injection(pred_block)
     except Exception as _pred_err:
         logger.debug("PREDICTIVE_INJECT_SKIP: %s", str(_pred_err)[:100])
 
-    # Inject long-term memory recall (self-improvement notes, research, lessons)
+    # Long-term memory recall
     try:
-        from .recall import inject_recall_context
-        inject_recall_context(db, owner_id, user_message, messages)
+        from .recall import get_recall_context_block
+        recall_block = get_recall_context_block(db, owner_id, user_message)
+        if recall_block:
+            _add_injection(recall_block)
     except Exception as _recall_err:
         logger.debug("RECALL_INJECT_SKIP: %s", str(_recall_err)[:100])
 
-    # User profile injection
+    # User profile
     try:
-        from ..services.user_profile import inject_profile_context
-        inject_profile_context(owner_id, messages)
+        from ..services.user_profile import get_profile_context_block
+        profile_block = get_profile_context_block(owner_id)
+        if profile_block:
+            _add_injection(profile_block)
     except Exception as _up_err:
         logger.debug("PROFILE_INJECT_SKIP: %s", str(_up_err)[:80])
 
-    # World model injection
+    # World model
     try:
-        from ..services.world_model import inject_world_context
-        inject_world_context(owner_id, messages)
+        from ..services.world_model import get_world_context_block
+        world_block = get_world_context_block(owner_id)
+        if world_block:
+            _add_injection(world_block)
     except Exception as _wm_err:
         logger.debug("WORLD_MODEL_SKIP: %s", str(_wm_err)[:80])
 
-    # JitRL — inject high-value past experiences as few-shot examples
+    # JitRL examples
     try:
-        from ..services.jit_rl import inject_jit_examples
-        inject_jit_examples(owner_id, user_message, messages)
+        from ..services.jit_rl import get_jit_examples_block
+        jit_block = get_jit_examples_block(owner_id, user_message)
+        if jit_block:
+            _add_injection(jit_block)
     except Exception as _jit_err:
         logger.debug("JITRL_SKIP: %s", str(_jit_err)[:80])
 
-    # Multi-turn planning: generate execution plan before acting on complex tasks
+    # Episodic memories
     try:
-        from ..services.planner import inject_plan_context
-        inject_plan_context(user_message, messages)
-    except Exception as _plan_err:
-        logger.debug("PLANNER_SKIP: %s", str(_plan_err)[:80])
+        from .episodes import recall_similar_episodes
+        episodes = recall_similar_episodes(owner_id, user_message, limit=3)
+        if episodes:
+            ep_lines = []
+            for ep in episodes:
+                outcome_emoji = "✅" if ep["outcome"] == "success" else "❌" if ep["outcome"] == "failure" else "⚠️"
+                ep_lines.append(
+                    f"{outcome_emoji} Situation: {ep['situation'][:120]} | "
+                    f"Action: {ep['action_taken'][:120]} | "
+                    f"Outcome: {ep['outcome']}"
+                )
+            _add_injection(
+                "[EPISODIC MEMORY] Similar past situations you've handled:\n" +
+                "\n".join(ep_lines) +
+                "\nUse this context to improve your response."
+            )
+    except Exception as _ep_err:
+        logger.debug("EPISODE_INJECT_SKIP: %s", str(_ep_err)[:100])
 
-    # Tree of Thoughts: branch multiple approaches for decision/strategy tasks
+    # Reflexion lessons
     try:
-        from ..services.tree_of_thoughts import inject_tot_context
-        inject_tot_context(user_message, messages)
-    except Exception as _tot_err:
-        logger.debug("TOT_SKIP: %s", str(_tot_err)[:80])
-
-    # Inject Reflexion lessons (past failure reflections — don't repeat mistakes)
-    try:
-        from ..services.reflexion import inject_reflexion_context
-        inject_reflexion_context(db, owner_id, user_message, messages)
+        from ..services.reflexion import get_reflexion_block
+        reflex_block = get_reflexion_block(db, owner_id, user_message)
+        if reflex_block:
+            _add_injection(reflex_block)
     except Exception as _reflex_err:
         logger.debug("REFLEXION_INJECT_SKIP: %s", str(_reflex_err)[:100])
 
-    # Inject optimised tool hints (DSPy-style, only if any exist)
+    # DSPy optimised hints
     try:
         from ..services.prompt_optimizer import build_tool_hints_block
         hints_block = build_tool_hints_block(db, owner_id)
         if hints_block:
-            messages.append({"role": "system", "content": hints_block})
+            _add_injection(hints_block)
     except Exception as _dspy_err:
         logger.debug("DSPY_HINTS_SKIP: %s", str(_dspy_err)[:80])
+
+    # Multi-turn planning
+    try:
+        from ..services.planner import get_plan_block
+        plan_block = get_plan_block(user_message)
+        if plan_block:
+            _add_injection(plan_block)
+    except Exception as _plan_err:
+        logger.debug("PLANNER_SKIP: %s", str(_plan_err)[:80])
+
+    # Tree of Thoughts
+    try:
+        from ..services.tree_of_thoughts import get_tot_block
+        tot_block = get_tot_block(user_message)
+        if tot_block:
+            _add_injection(tot_block)
+    except Exception as _tot_err:
+        logger.debug("TOT_SKIP: %s", str(_tot_err)[:80])
+
+    # Insert all injections at position 1 (after system prompt, before history)
+    if _injections:
+        messages = [messages[0]] + _injections + messages[1:]
 
     # Inject relevant episodic memories (past similar situations)
     try:

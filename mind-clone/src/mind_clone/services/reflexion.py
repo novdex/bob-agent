@@ -269,6 +269,20 @@ def get_recent_reflections(
 # Inject reflections into messages before LLM call
 # ---------------------------------------------------------------------------
 
+def get_reflexion_block(db: Session, owner_id: int, user_message: str) -> str:
+    """Return reflexion context as a string block (for safe pre-history injection)."""
+    try:
+        reflections = get_recent_reflections(db, owner_id, query=user_message, limit=3)
+        if not reflections:
+            return ""
+        lines = ["[REFLEXION] Lessons from past failures — don't repeat these mistakes:"]
+        for r in reflections:
+            lines.append(f"• {r['lesson']}")
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
+
 def inject_reflexion_context(
     db: Session,
     owner_id: int,

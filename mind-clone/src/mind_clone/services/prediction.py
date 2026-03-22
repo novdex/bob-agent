@@ -203,6 +203,17 @@ def build_predictive_context(patterns: Dict[str, Any]) -> Optional[str]:
     )
 
 
+def get_predictive_context_block(db: Session, owner_id: int, user_message: str) -> str:
+    """Return predictive context as a string block."""
+    if not PREDICTION_ENABLED:
+        return ""
+    try:
+        patterns = get_user_patterns(db, owner_id)
+        return build_predictive_context(patterns) or ""
+    except Exception:
+        return ""
+
+
 def inject_predictive_context(
     db: Session,
     owner_id: int,

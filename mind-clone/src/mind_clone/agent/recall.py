@@ -194,6 +194,14 @@ def build_recall_context(
     )
 
 
+def get_recall_context_block(db: Session, owner_id: int, user_message: str) -> str:
+    """Return recall context as a string block."""
+    try:
+        return build_recall_context(db, owner_id, user_message) or ""
+    except Exception:
+        return ""
+
+
 def inject_recall_context(
     db: Session,
     owner_id: int,

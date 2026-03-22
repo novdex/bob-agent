@@ -76,6 +76,23 @@ def _save_world(owner_id: int, world: dict) -> None:
         db.close()
 
 
+def get_world_context_block(owner_id: int) -> str:
+    """Return world model context as a string block."""
+    try:
+        world = _load_world(owner_id)
+        projects = world.get("projects", {})
+        proj_summary = "; ".join(
+            f"{name}: {info.get('status','?')}" for name, info in list(projects.items())[:3]
+        )
+        events = world.get("recent_events", [])[-3:]
+        lines = [f"[WORLD MODEL] Projects: {proj_summary}"]
+        if events:
+            lines.append(f"Recent events: {'; '.join(str(e) for e in events)}")
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
+
 def inject_world_context(owner_id: int, messages: list) -> None:
     """Inject world model state into messages."""
     try:

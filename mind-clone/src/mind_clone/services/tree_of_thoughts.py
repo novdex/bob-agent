@@ -113,6 +113,19 @@ def pick_best_thought(problem: str, branches: str) -> Optional[str]:
     return None
 
 
+def get_tot_block(user_message: str) -> str:
+    """Return Tree of Thoughts best path as a string block."""
+    if not needs_tree_of_thoughts(user_message):
+        return ""
+    branches = generate_thought_branches(user_message)
+    if not branches:
+        return ""
+    best = pick_best_thought(user_message, branches)
+    if not best:
+        return ""
+    return "[TREE OF THOUGHTS] Multiple approaches were evaluated. Proceed with the best one:\n\n" + best
+
+
 def inject_tot_context(user_message: str, messages: list) -> bool:
     """Run Tree of Thoughts and inject best approach into messages.
 

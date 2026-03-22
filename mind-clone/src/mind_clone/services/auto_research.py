@@ -291,7 +291,11 @@ def generate_hypotheses(db: Session, owner_id: int = 1) -> list[dict]:
 
     try:
         result = call_llm_json_task(prompt, schema)
-        hypotheses = result.get("hypotheses", [])
+        if not result.get("ok"):
+            logger.error("HYPOTHESIS_GENERATION_FAILED: LLM call failed: %s", result.get("error"))
+            return []
+        data = result.get("data", result)  # call_llm_json_task wraps in {"ok": True, "data": {...}}
+        hypotheses = data.get("hypotheses", [])
         # Sort by expected_impact descending
         hypotheses.sort(key=lambda h: float(h.get("expected_impact", 0)), reverse=True)
         logger.info("HYPOTHESES_GENERATED count=%d", len(hypotheses))
