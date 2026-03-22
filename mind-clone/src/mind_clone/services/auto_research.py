@@ -234,10 +234,15 @@ def generate_hypotheses(db: Session, owner_id: int = 1) -> list[dict]:
     recent_failures = _get_recent_failures(db, owner_id)
     improvement_notes = _get_improvement_notes(db, owner_id)
     weak_tools = _get_weak_tools(db, owner_id)
+    baseline = measure_composite_score(db, owner_id)
 
     prompt = textwrap.dedent(f"""
     You are Bob's self-improvement research engine. Your job is to propose 3 specific,
     testable code improvement hypotheses for Bob's codebase.
+
+    ## Current state:
+    - Composite score: {baseline['composite']} (based on {baseline['perf_samples']} tool samples, {baseline['exec_samples']} exec samples)
+    - NOTE: If perf_samples < 50, the score is unreliable — focus on BOB_RESEARCH.md ideas instead of the score.
 
     ## Steering document (BOB_RESEARCH.md):
     {research_md[:1500]}
@@ -252,10 +257,14 @@ def generate_hypotheses(db: Session, owner_id: int = 1) -> list[dict]:
     {json.dumps(weak_tools, indent=2)}
 
     ## Instructions:
-    Generate exactly 3 hypotheses. Each must:
+    IMPORTANT: Always generate exactly 3 hypotheses. Do NOT refuse or return empty.
+    Even if the score looks high or data is sparse, there are always improvements to make.
+    Use the BOB_RESEARCH.md "Concrete Experiment Ideas" section as your primary source.
+    Pick ideas from Tier 1 first (highest impact), then Tier 2.
+    Each hypothesis must:
     - Target a specific file listed in BOB_RESEARCH.md allowed files
     - Describe a concrete, small change (max 50 lines)
-    - Be different from the recent failures
+    - Be different from the recent failures listed above
     - Be safe and conservative
 
     Return a JSON object with key "hypotheses" containing an array of 3 objects, each with:
