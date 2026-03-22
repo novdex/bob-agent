@@ -352,7 +352,7 @@ def implement_hypothesis(hypothesis: dict) -> tuple[bool, str]:
     ]
 
     try:
-        response = call_llm(prompt, temperature=0.2)
+        response = call_llm(prompt)
         new_content = ""
         if isinstance(response, dict):
             # Extract text from response
