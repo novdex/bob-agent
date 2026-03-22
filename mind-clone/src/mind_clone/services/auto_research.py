@@ -204,7 +204,7 @@ def _get_improvement_notes(db: Session, owner_id: int, limit: int = 5) -> list[s
         .limit(limit)
         .all()
     )
-    return [getattr(r, "content", str(r))[:200] for r in rows]
+    return [f"{r.title}: {r.summary}"[:200] for r in rows]
 
 
 def _get_weak_tools(db: Session, owner_id: int, limit: int = 5) -> list[dict]:
@@ -319,6 +319,21 @@ def implement_hypothesis(hypothesis: dict) -> tuple[bool, str]:
 
     if not target_file:
         return False, "No target_file specified"
+
+    # Auto-correct common LLM path hallucinations
+    _path_corrections = {
+        "src/mind_clone/services/recall.py": "src/mind_clone/agent/recall.py",
+        "src/mind_clone/services/reasoning.py": "src/mind_clone/agent/reasoning.py",
+        "src/mind_clone/services/basic.py": "src/mind_clone/tools/basic.py",
+        "src/mind_clone/services/memory.py": "src/mind_clone/tools/memory.py",
+        "src/mind_clone/services/scheduler.py": "src/mind_clone/tools/scheduler.py",
+        "mind-clone/src/mind_clone/": "src/mind_clone/",
+    }
+    for wrong, right in _path_corrections.items():
+        if target_file.startswith(wrong):
+            target_file = target_file.replace(wrong, right, 1)
+            logger.info("PATH_CORRECTED from=%s to=%s", wrong, right)
+            break
 
     file_path = Path(_REPO_ROOT) / target_file
     if not file_path.exists():

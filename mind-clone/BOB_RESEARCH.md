@@ -29,8 +29,8 @@ Improve Bob's response quality, tool reliability, and memory recall accuracy.
 - src/mind_clone/services/prediction.py
 - src/mind_clone/services/retro.py
 - src/mind_clone/services/proactive.py
-- src/mind_clone/tools/basic.py
-- src/mind_clone/tools/memory.py
+- src/mind_clone/tools/basic.py  (NOT services/basic.py)
+- src/mind_clone/tools/memory.py  (NOT services/memory.py)
 - src/mind_clone/tools/scheduler.py
 - src/mind_clone/agent/reasoning.py
 - src/mind_clone/agent/recall.py
