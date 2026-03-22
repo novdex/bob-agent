@@ -37,6 +37,15 @@ Improve Bob's response quality, tool reliability, and memory recall accuracy.
 - src/mind_clone/services/auto_research.py (only for hypothesis generation improvements, NOT experiment runner)
 - src/mind_clone/services/memory_graph.py
 
+## IMPORTANT: Correct File Paths (verify before targeting)
+- recall is at: src/mind_clone/agent/recall.py  (NOT services/recall.py)
+- reasoning is at: src/mind_clone/agent/reasoning.py (NOT services/reasoning.py)
+- proactive is at: src/mind_clone/services/proactive.py
+- retro is at: src/mind_clone/services/retro.py
+- prediction is at: src/mind_clone/services/prediction.py
+- basic tools at: src/mind_clone/tools/basic.py
+- memory tools at: src/mind_clone/tools/memory.py
+
 ## Constraints
 - Max 50 lines changed per experiment
 - All tests must pass after change
