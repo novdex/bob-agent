@@ -1,8 +1,8 @@
 """
 LLM client for the agent team.
 
-Wraps the Kimi K2.5 API (OpenAI-compatible). Designed to be
-model-agnostic — swap to Claude/GPT by changing config.
+Wraps OpenRouter (OpenAI-compatible). Primary model: MiniMax 2.7.
+Model-agnostic — swap by changing AgentConfig.
 """
 
 from __future__ import annotations
@@ -144,8 +144,6 @@ class LLMClient:
         if not result["ok"]:
             raise RuntimeError(f"LLM call failed: {result['error']}")
 
-        # Kimi K2.5 sometimes puts the real answer in reasoning_content
-        # and leaves content empty. Return whichever has substance.
         content = result["content"].strip()
         reasoning = result["reasoning"].strip()
         return content if content else reasoning

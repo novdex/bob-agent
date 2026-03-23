@@ -1,7 +1,7 @@
 """
 LLM client with automatic failover chain.
 
-Failover: Kimi K2.5 -> DeepSeek -> OpenAI GPT-4o -> Anthropic Claude.
+Failover: MiniMax 2.7 (OpenRouter) -> Claude Sonnet (OpenRouter) -> Kimi K2.5 -> DeepSeek -> OpenAI GPT-4o.
 """
 from __future__ import annotations
 
@@ -32,27 +32,62 @@ def _get_circuit_breaker(provider: str) -> CircuitBreaker:
     return _circuit_breakers[provider]
 
 
+_OPENROUTER_EXTRA_HEADERS = {
+    "HTTP-Referer": "https://github.com/arshdeep/mind-clone",
+    "X-Title": "Bob Agent",
+}
+
+
 def _build_failover_chain() -> List[Dict[str, Any]]:
     """Build ordered list of LLM providers from configured API keys.
 
-    HARD RULE: Kimi K2.5 is the ONLY permitted provider for Bob.
-    Anthropic is explicitly excluded — the key may exist in env but
-    Bob must never fall back to it (credits not available / not permitted).
+    Chain order:
+      1. MiniMax 2.7 via OpenRouter (primary)
+      2. Claude Sonnet via OpenRouter (fallback)
+      3. Kimi K2.5 (fallback)
+      4. DeepSeek (fallback)
+      5. OpenAI GPT-4o (fallback)
     """
     chain: List[Dict[str, Any]] = []
+
+    # --- OpenRouter providers (MiniMax primary, Claude fallback) ---
+    or_key = getattr(settings, "openrouter_api_key", "")
+    if or_key and or_key not in ("", "YOUR_OPENROUTER_KEY_HERE"):
+        or_base = getattr(settings, "openrouter_base_url", "https://openrouter.ai/api/v1")
+        chain.append({
+            "name": "openrouter-minimax",
+            "base_url": or_base,
+            "api_key": or_key,
+            "model": getattr(settings, "openrouter_model", "minimax/minimax-m2.7"),
+            "format": "openai",
+            "timeout": 120,
+            "extra_headers": _OPENROUTER_EXTRA_HEADERS,
+        })
+        chain.append({
+            "name": "openrouter-claude",
+            "base_url": or_base,
+            "api_key": or_key,
+            "model": getattr(settings, "openrouter_claude_model", "anthropic/claude-sonnet-4-5"),
+            "format": "openai",
+            "timeout": 120,
+            "extra_headers": _OPENROUTER_EXTRA_HEADERS,
+        })
+
+    # --- Kimi K2.5 ---
     kimi_key = settings.kimi_api_key
     if kimi_key and kimi_key != "YOUR_KIMI_API_KEY_HERE":
         chain.append({"name": "kimi", "base_url": settings.kimi_base_url,
                        "api_key": kimi_key, "model": settings.kimi_model,
                        "format": "openai", "timeout": 90})
 
-    # NOTE: Anthropic is intentionally excluded regardless of env vars.
-    # DeepSeek and OpenAI only added if explicitly configured.
+    # --- DeepSeek ---
     dsk = getattr(settings, "deepseek_api_key", "")
     if dsk and dsk not in ("", "YOUR_DEEPSEEK_KEY_HERE"):
         chain.append({"name": "deepseek", "base_url": "https://api.deepseek.com",
                        "api_key": dsk, "model": "deepseek-chat",
                        "format": "openai", "timeout": 90})
+
+    # --- OpenAI ---
     oak = getattr(settings, "openai_api_key", "")
     if oak and oak not in ("", "YOUR_OPENAI_KEY_HERE"):
         chain.append({"name": "openai", "base_url": "https://api.openai.com/v1",
@@ -79,11 +114,13 @@ def _ensure_chain() -> List[Dict[str, Any]]:
 
 def _call_openai_compatible(provider, messages, tools=None,
                             tool_choice=None, timeout=90):
-    """Call an OpenAI-compatible endpoint (Kimi, DeepSeek, OpenAI)."""
+    """Call an OpenAI-compatible endpoint (OpenRouter, Kimi, DeepSeek, OpenAI)."""
     headers = {
         "Authorization": f"Bearer {provider['api_key']}",
         "Content-Type": "application/json",
     }
+    if provider.get("extra_headers"):
+        headers.update(provider["extra_headers"])
     payload: Dict[str, Any] = {
         "model": provider["model"],
         "messages": messages,

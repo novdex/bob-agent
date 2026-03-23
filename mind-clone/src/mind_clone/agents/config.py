@@ -18,10 +18,10 @@ class AgentConfig:
 
     # --- LLM settings ---
     api_key: str = ""
-    base_url: str = "https://api.moonshot.ai/v1"
-    model: str = "kimi-k2.5"
+    base_url: str = "https://openrouter.ai/api/v1"
+    model: str = "minimax/minimax-m2.7"
     max_tokens: int = 8192
-    temperature: float = 1.0  # Kimi K2.5 requires exactly 1.0
+    temperature: float = 1.0
 
     # --- Workspace ---
     repo_root: str = ""          # auto-detected
@@ -48,7 +48,11 @@ class AgentConfig:
     def __post_init__(self):
         """Load from environment if not set explicitly."""
         if not self.api_key:
-            self.api_key = os.environ.get("KIMI_API_KEY", "")
+            # Prefer OpenRouter key; fall back to Kimi key for compatibility
+            self.api_key = (
+                os.environ.get("OPENROUTER_API_KEY", "")
+                or os.environ.get("KIMI_API_KEY", "")
+            )
         if not self.repo_root:
             # Walk up from this file to find the mind-clone root
             current = os.path.dirname(os.path.abspath(__file__))

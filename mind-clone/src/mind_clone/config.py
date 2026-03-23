@@ -70,6 +70,12 @@ class Settings(BaseSettings):
     kimi_model: str = "kimi-k2.5"
     kimi_fallback_model: str = Field(default="", alias="KIMI_FALLBACK_MODEL")
 
+    # OpenRouter (primary provider — MiniMax 2.7 with Claude fallback)
+    openrouter_api_key: str = Field(default="", alias="OPENROUTER_API_KEY")
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    openrouter_model: str = "minimax/minimax-m2.7"
+    openrouter_claude_model: str = "anthropic/claude-sonnet-4-5"
+
     # Failover chain API keys
     deepseek_api_key: str = Field(default="", alias="DEEPSEEK_API_KEY")
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
@@ -450,6 +456,10 @@ KIMI_MODEL = settings.kimi_model
 KIMI_FALLBACK_MODEL = settings.kimi_fallback_model
 KIMI_API_KEY = settings.kimi_api_key
 KIMI_BASE_URL = settings.kimi_base_url
+OPENROUTER_API_KEY = settings.openrouter_api_key
+OPENROUTER_BASE_URL = settings.openrouter_base_url
+OPENROUTER_MODEL = settings.openrouter_model
+OPENROUTER_CLAUDE_MODEL = settings.openrouter_claude_model
 LLM_FAILOVER_ENABLED = settings.llm_failover_enabled
 LLM_REQUEST_TIMEOUT_SECONDS = settings.llm_request_timeout_seconds
 
