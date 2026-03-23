@@ -63,7 +63,7 @@ def _validate_owner_id(owner_id: int | None) -> bool:
     if owner_id is None:
         return False
     try:
-        return None
+        return int(owner_id) > 0
     except (ValueError, TypeError):
         return False
 
@@ -225,7 +225,7 @@ def cl_close_improvement_notes(notes: list[str], response_text: str, owner_id: i
 def cl_adjust_for_forecast_confidence(confidence: int, step: dict) -> dict:
     """Loop 4: Modify execution strategy based on forecast confidence."""
     if not CLOSED_LOOP_ENABLED:
-        return None
+        return step
     if confidence < CLOSED_LOOP_FORECAST_LOW_CONFIDENCE:
         step["title"] = f"[LOW CONFIDENCE: {confidence}%] {step.get('title', '')}"
         step["_retry_budget_multiplier"] = 2

@@ -334,6 +334,10 @@ def run_agent_turn(
     # position 1 (after the main system prompt, before conversation history).
     # -----------------------------------------------------------------------
     _injections: List[dict] = []
+    # Closed-loop feedback tracking: capture injected lessons/notes so we can
+    # check if the LLM actually referenced them in its response (loops 2+3).
+    _injected_lessons: list[str] = []
+    _injected_notes: list[str] = []
 
     def _add_injection(content: str) -> None:
         """Add a system message to the pre-history injection buffer."""
@@ -432,6 +436,7 @@ def run_agent_turn(
         reflex_block = get_reflexion_block(db, owner_id, user_message)
         if reflex_block:
             _add_injection(reflex_block)
+            _injected_lessons.append(reflex_block)
     except Exception as _reflex_err:
         logger.debug("REFLEXION_INJECT_SKIP: %s", str(_reflex_err)[:100])
 
@@ -499,6 +504,13 @@ def run_agent_turn(
 
     # Get tool definitions (built-in + custom)
     tools = effective_tool_definitions(owner_id=owner_id)
+
+    # Closed-loop 1+6: filter/reorder tools by historical success rate
+    try:
+        from ..core.closed_loop import cl_filter_tools_by_performance
+        tools = cl_filter_tools_by_performance(tools, owner_id)
+    except Exception as _cl_err:
+        logger.debug("CL_FILTER_TOOLS_FAIL: %s", str(_cl_err)[:80])
 
     # Track tool loops
     tool_loops = 0
@@ -577,6 +589,16 @@ def run_agent_turn(
                     continue  # Re-call LLM with hint injected
 
             save_assistant_message(db, owner_id, content)
+
+            # Closed-loop 2+3: track lesson/note usage in the LLM response
+            try:
+                from ..core.closed_loop import cl_track_lesson_usage, cl_close_improvement_notes
+                if _injected_lessons:
+                    cl_track_lesson_usage(_injected_lessons, content, owner_id)
+                if _injected_notes:
+                    cl_close_improvement_notes(_injected_notes, content, owner_id)
+            except Exception as _cl_err:
+                logger.debug("CL_LESSON_TRACK_FAIL: %s", str(_cl_err)[:80])
 
             # Background tasks after successful turn (non-blocking)
             import threading

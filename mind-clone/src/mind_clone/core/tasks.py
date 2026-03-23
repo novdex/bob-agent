@@ -434,6 +434,15 @@ def execute_task_step(
         return {"ok": False, "error": "Step index out of range"}
 
     step = plan[step_index]
+
+    # Closed-loop 4: adjust execution strategy based on forecast confidence
+    try:
+        from .closed_loop import cl_adjust_for_forecast_confidence
+        confidence = step.get("confidence", 50)
+        step = cl_adjust_for_forecast_confidence(confidence, step)
+    except Exception as _cl_err:
+        logger.debug("CL_FORECAST_ADJUST_FAIL: %s", str(_cl_err)[:80])
+
     step["status"] = "running"
     step["started_at"] = utc_now_iso()
 
@@ -500,6 +509,19 @@ def run_task(task_id: int) -> Dict[str, Any]:
         result = execute_task_step(task, i)
         if not result.get("ok"):
             update_task_status(task_id, TASK_STATUS_FAILED, error=result.get("error"))
+            # Closed-loop 5: detect repeated failure patterns, block dead strategies
+            try:
+                from .closed_loop import cl_check_dead_letter_pattern
+                _cl_db = SessionLocal()
+                try:
+                    cl_check_dead_letter_pattern(
+                        _cl_db, task.owner_id, result.get("error", ""), task
+                    )
+                    _cl_db.commit()
+                finally:
+                    _cl_db.close()
+            except Exception as _cl_err:
+                logger.debug("CL_DEAD_LETTER_CHECK_FAIL: %s", str(_cl_err)[:80])
             return result
 
     update_task_status(task_id, TASK_STATUS_DONE)
