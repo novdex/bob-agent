@@ -43,10 +43,10 @@ def _build_failover_chain() -> List[Dict[str, Any]]:
 
     Chain order (all via OpenRouter):
       1. minimax/minimax-m2.7                          (primary)
-      2. nvidia/llama-3.3-nemotron-super-49b-v1:free   (free, agent-optimised)
-      3. deepseek/deepseek-r1-0528:free                (free, reasoning)
+      2. nvidia/nemotron-3-super-120b-a12b:free   (free, agent-optimised)
+      3. qwen/qwen3-next-80b-a3b-instruct:free                (free, reasoning)
       4. qwen/qwen3-coder:free                         (free, tool use)
-      5. google/gemini-2.5-flash-lite-preview-06-18    (cheap paid backup)
+      5. google/gemini-2.5-flash-lite    (cheap paid backup)
     """
     chain: List[Dict[str, Any]] = []
 
@@ -66,10 +66,10 @@ def _build_failover_chain() -> List[Dict[str, Any]]:
             "openrouter-minimax",
             getattr(settings, "openrouter_model", "minimax/minimax-m2.7"),
         ))
-        chain.append(_or("openrouter-nemotron",  "nvidia/llama-3.3-nemotron-super-49b-v1:free"))
-        chain.append(_or("openrouter-deepseek",  "deepseek/deepseek-r1-0528:free"))
+        chain.append(_or("openrouter-nemotron",  "nvidia/nemotron-3-super-120b-a12b:free"))
+        chain.append(_or("openrouter-deepseek",  "qwen/qwen3-next-80b-a3b-instruct:free"))
         chain.append(_or("openrouter-qwen",      "qwen/qwen3-coder:free"))
-        chain.append(_or("openrouter-gemini",    "google/gemini-2.5-flash-lite-preview-06-18", timeout=60))
+        chain.append(_or("openrouter-gemini",    "google/gemini-2.5-flash-lite", timeout=60))
 
     if not chain:
         logger.error("LLM_FAILOVER_CHAIN_EMPTY — no valid providers configured")
