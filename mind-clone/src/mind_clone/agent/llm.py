@@ -41,58 +41,35 @@ _OPENROUTER_EXTRA_HEADERS = {
 def _build_failover_chain() -> List[Dict[str, Any]]:
     """Build ordered list of LLM providers from configured API keys.
 
-    Chain order:
-      1. MiniMax 2.7 via OpenRouter (primary)
-      2. Claude Sonnet via OpenRouter (fallback)
-      3. Kimi K2.5 (fallback)
-      4. DeepSeek (fallback)
-      5. OpenAI GPT-4o (fallback)
+    Chain order (all via OpenRouter):
+      1. minimax/minimax-m2.7                          (primary)
+      2. nvidia/llama-3.3-nemotron-super-49b-v1:free   (free, agent-optimised)
+      3. deepseek/deepseek-r1-0528:free                (free, reasoning)
+      4. qwen/qwen3-coder:free                         (free, tool use)
+      5. google/gemini-2.5-flash-lite-preview-06-18    (cheap paid backup)
     """
     chain: List[Dict[str, Any]] = []
 
-    # --- OpenRouter providers (MiniMax primary, Claude fallback) ---
     or_key = getattr(settings, "openrouter_api_key", "")
     if or_key and or_key not in ("", "YOUR_OPENROUTER_KEY_HERE"):
         or_base = getattr(settings, "openrouter_base_url", "https://openrouter.ai/api/v1")
-        chain.append({
-            "name": "openrouter-minimax",
+        _or = lambda name, model, timeout=120: {  # noqa: E731
+            "name": name,
             "base_url": or_base,
             "api_key": or_key,
-            "model": getattr(settings, "openrouter_model", "minimax/minimax-m2.7"),
+            "model": model,
             "format": "openai",
-            "timeout": 120,
+            "timeout": timeout,
             "extra_headers": _OPENROUTER_EXTRA_HEADERS,
-        })
-        chain.append({
-            "name": "openrouter-claude",
-            "base_url": or_base,
-            "api_key": or_key,
-            "model": getattr(settings, "openrouter_claude_model", "anthropic/claude-sonnet-4-5"),
-            "format": "openai",
-            "timeout": 120,
-            "extra_headers": _OPENROUTER_EXTRA_HEADERS,
-        })
-
-    # --- Kimi K2.5 ---
-    kimi_key = settings.kimi_api_key
-    if kimi_key and kimi_key != "YOUR_KIMI_API_KEY_HERE":
-        chain.append({"name": "kimi", "base_url": settings.kimi_base_url,
-                       "api_key": kimi_key, "model": settings.kimi_model,
-                       "format": "openai", "timeout": 90})
-
-    # --- DeepSeek ---
-    dsk = getattr(settings, "deepseek_api_key", "")
-    if dsk and dsk not in ("", "YOUR_DEEPSEEK_KEY_HERE"):
-        chain.append({"name": "deepseek", "base_url": "https://api.deepseek.com",
-                       "api_key": dsk, "model": "deepseek-chat",
-                       "format": "openai", "timeout": 90})
-
-    # --- OpenAI ---
-    oak = getattr(settings, "openai_api_key", "")
-    if oak and oak not in ("", "YOUR_OPENAI_KEY_HERE"):
-        chain.append({"name": "openai", "base_url": "https://api.openai.com/v1",
-                       "api_key": oak, "model": "gpt-4o",
-                       "format": "openai", "timeout": 60})
+        }
+        chain.append(_or(
+            "openrouter-minimax",
+            getattr(settings, "openrouter_model", "minimax/minimax-m2.7"),
+        ))
+        chain.append(_or("openrouter-nemotron",  "nvidia/llama-3.3-nemotron-super-49b-v1:free"))
+        chain.append(_or("openrouter-deepseek",  "deepseek/deepseek-r1-0528:free"))
+        chain.append(_or("openrouter-qwen",      "qwen/qwen3-coder:free"))
+        chain.append(_or("openrouter-gemini",    "google/gemini-2.5-flash-lite-preview-06-18", timeout=60))
 
     if not chain:
         logger.error("LLM_FAILOVER_CHAIN_EMPTY — no valid providers configured")
