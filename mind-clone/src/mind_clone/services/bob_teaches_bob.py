@@ -103,6 +103,12 @@ def store_teaching_moment(user_message: str, response: str, owner_id: int = 1) -
             importance=0.9,
         )
         db.add(ep); db.commit()
+        db.refresh(ep)
+        try:
+            from .memory_graph import auto_link
+            auto_link(db, owner_id, "episodic", ep.id)
+        except Exception:
+            pass
         logger.info("TEACHING_MOMENT_STORED skill=%s", skill_name)
         return True
     except Exception as e:

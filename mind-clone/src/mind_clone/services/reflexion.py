@@ -206,8 +206,14 @@ def reflect_on_task_failure(
             )
 
             title = f"Task failed: {truncate_text(user_message, 80)}"
-            save_reflection(db, owner_id, title, reflection,
-                          error_category="task_failure")
+            note = save_reflection(db, owner_id, title, reflection,
+                                   error_category="task_failure")
+            if note:
+                try:
+                    from .memory_graph import auto_link
+                    auto_link(db, owner_id, "improvement", note.id)
+                except Exception:
+                    pass
         except Exception as e:
             logger.debug("REFLECT_TASK_FAILURE_ERR: %s", e)
         finally:

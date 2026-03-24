@@ -144,6 +144,11 @@ def save_episode(
         )
         db.add(episode)
         db.commit()
+        try:
+            from ..services.memory_graph import auto_link
+            auto_link(db, owner_id, "episodic", episode.id)
+        except Exception:
+            pass
         return True
     except Exception as e:
         db.rollback()
