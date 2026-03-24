@@ -681,6 +681,17 @@ def run_agent_turn(
             except Exception:
                 pass
 
+            # 9. Compress conversation history if it has grown too long
+            try:
+                from .memory import maybe_compress_history
+                threading.Thread(
+                    target=maybe_compress_history,
+                    args=(owner_id,),
+                    daemon=True,
+                ).start()
+            except Exception:
+                pass
+
             return content
 
         # Save assistant message with tool calls

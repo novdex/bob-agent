@@ -160,6 +160,95 @@ def create_conversation_summary(
     return summary_obj
 
 
+def maybe_compress_history(
+    owner_id: int,
+    threshold: int = 30,
+    keep_recent: int = 15,
+) -> bool:
+    """Compress conversation history when it exceeds threshold.
+
+    Takes the oldest (count - keep_recent) messages, writes a ConversationSummary
+    record from their text, then deletes them. Opens its own DB session so it is
+    safe to run from a background thread. Returns True if compression occurred.
+    """
+    from ..database.session import SessionLocal
+    from ..core.state import session_write_lock
+
+    db = SessionLocal()
+    try:
+        count = db.query(ConversationMessage).filter(
+            ConversationMessage.owner_id == owner_id
+        ).count()
+
+        if count <= threshold:
+            return False
+
+        to_compress = count - keep_recent
+        rows = (
+            db.query(ConversationMessage)
+            .filter(ConversationMessage.owner_id == owner_id)
+            .order_by(ConversationMessage.id.asc())
+            .limit(to_compress)
+            .all()
+        )
+
+        if not rows:
+            return False
+
+        start_id = rows[0].id
+        end_id = rows[-1].id
+
+        # Build summary text as a transcript dump
+        lines: List[str] = []
+        for row in rows:
+            role = row.role or "unknown"
+            content = (row.content or "").strip()
+            if content:
+                lines.append(f"[{role}] {content[:500]}")
+        summary_text = "\n".join(lines)
+
+        if not summary_text:
+            return False
+
+        key_points: List[str] = [
+            (row.content or "")[:200]
+            for row in rows
+            if row.role == "user" and row.content
+        ][:10]
+
+        with session_write_lock(owner_id, reason="history_compress"):
+            summary_obj = ConversationSummary(
+                owner_id=owner_id,
+                start_message_id=start_id,
+                end_message_id=end_id,
+                summary=summary_text,
+                key_points_json=json.dumps(key_points, ensure_ascii=False),
+                open_loops_json="[]",
+            )
+            db.add(summary_obj)
+            db.query(ConversationMessage).filter(
+                ConversationMessage.owner_id == owner_id,
+                ConversationMessage.id <= end_id,
+            ).delete(synchronize_session=False)
+            db.commit()
+
+        logger.info(
+            "Compressed %d messages into summary for owner %d",
+            to_compress, owner_id,
+        )
+        return True
+
+    except Exception as exc:
+        logger.warning("maybe_compress_history failed for owner %d: %s", owner_id, exc)
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return False
+    finally:
+        db.close()
+
+
 def get_conversation_summaries(
     db: Session,
     owner_id: int,
