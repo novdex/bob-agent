@@ -249,6 +249,11 @@ def run_daily_memory_maintenance(owner_id: int = 1) -> dict:
     try:
         decay_result = decay_memories(db, owner_id)
         prune_result = prune_faded_memories(db, owner_id)
+        try:
+            from mind_clone.services.embedding_dedup import deduplicate_memory_vectors
+            deduplicate_memory_vectors(db, owner_id)
+        except Exception:
+            pass
         return {
             "ok": True,
             "decay": decay_result,
