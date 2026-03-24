@@ -636,21 +636,14 @@ def run_agent_turn(
             except Exception:
                 pass
 
-            # 3. Reflexion: reflect on task-level failures
-            try:
-                from ..services.reflexion import reflect_on_task_failure
-                reflect_on_task_failure(owner_id, user_message, content)
-            except Exception:
-                pass
-
-            # 4. Constitutional AI: self-critique before sending
+            # 3. Constitutional AI: self-critique before sending
             try:
                 from ..services.constitutional import maybe_review
                 content = maybe_review(user_message, content)
             except Exception:
                 pass
 
-            # 5. Co-evolving critic
+            # 4. Co-evolving critic
             try:
                 from ..services.co_critic import co_critique
                 content, _ = co_critique(user_message, content)
