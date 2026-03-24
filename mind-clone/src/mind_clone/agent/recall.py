@@ -144,12 +144,30 @@ def _search_memory_vectors(db: Session, owner_id: int, query: str, limit: int = 
     """Semantic search over MemoryVectors (lessons + world facts)."""
     try:
         from .memory import search_memory_vectors
+        from ..services.ebbinghaus import boost_memory
+
+        # Map MemoryVector.memory_type to boost_memory type
+        _BOOST_TYPE_MAP = {
+            "self_improvement_note": "improvement",
+            "episodic": "episodic",
+        }
+
         results = search_memory_vectors(db, owner_id, query, top_k=limit)
-        return [
-            f"Memory: {truncate_text(r.get('text', ''), 150)}"
-            for r in results
-            if r.get("text")
-        ]
+        snippets = []
+        for r in results:
+            text = r.get("text") or r.get("content", "")
+            if not text:
+                continue
+            snippets.append(f"Memory: {truncate_text(text, 150)}")
+            # Apply spaced repetition boost to the source record when recalled
+            try:
+                boost_type = _BOOST_TYPE_MAP.get(r.get("category", ""))
+                ref_id = r.get("ref_id")
+                if boost_type and ref_id:
+                    boost_memory(db, boost_type, ref_id)
+            except Exception as boost_err:
+                logger.debug("RECALL_VECTORS_BOOST_FAIL: %s", str(boost_err)[:100])
+        return snippets
     except Exception as e:
         logger.debug("RECALL_VECTORS_FAIL: %s", str(e)[:100])
         return []

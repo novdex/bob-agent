@@ -429,7 +429,9 @@ def search_memory_vectors(
         return [
             {
                 "id": row.id,
+                "ref_id": row.ref_id,
                 "content": row.text_preview or "",
+                "text": row.text_preview or "",
                 "category": row.memory_type,
                 "similarity": round(sim, 4),
             }
