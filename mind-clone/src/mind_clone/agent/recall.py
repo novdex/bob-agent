@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
@@ -61,9 +62,22 @@ def _search_self_improvement_notes(db: Session, owner_id: int, query: str, limit
                 scored.append((overlap, n))
 
         scored.sort(key=lambda x: -x[0])
+        top = scored[:limit]
+
+        # Increment recall tracking on matched notes
+        try:
+            now = datetime.now(timezone.utc)
+            for _, n in top:
+                n.recall_count = (n.recall_count or 0) + 1
+                n.last_recalled_at = now
+            db.commit()
+        except Exception as track_err:
+            logger.debug("RECALL_SELF_NOTES_TRACK_FAIL: %s", str(track_err)[:100])
+            db.rollback()
+
         return [
             f"Self-note: {n.title} — {truncate_text(n.summary, 150)}"
-            for _, n in scored[:limit]
+            for _, n in top
         ]
     except Exception as e:
         logger.debug("RECALL_SELF_NOTES_FAIL: %s", str(e)[:100])
