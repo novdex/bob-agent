@@ -666,7 +666,22 @@ def run_agent_turn(
             except Exception:
                 pass
 
-            # 3. Constitutional AI: self-critique before sending
+            # 3. Learn from corrections — extract permanent lessons
+            try:
+                from ..services.correction_learner import learn_from_correction
+                # Get Bob's previous message (what might have been wrong)
+                _prev_bob_msgs = [m for m in messages if m.get("role") == "assistant"]
+                _prev_bob = _prev_bob_msgs[-1].get("content", "")[:500] if _prev_bob_msgs else ""
+                if _prev_bob:
+                    threading.Thread(
+                        target=learn_from_correction,
+                        args=(owner_id, user_message, _prev_bob),
+                        daemon=True,
+                    ).start()
+            except Exception:
+                pass
+
+            # 4. Constitutional AI: self-critique before sending
             try:
                 from ..services.constitutional import maybe_review
                 content = maybe_review(user_message, content)
