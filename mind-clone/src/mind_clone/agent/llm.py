@@ -90,7 +90,7 @@ def _ensure_chain() -> List[Dict[str, Any]]:
 
 
 def _call_openai_compatible(provider, messages, tools=None,
-                            tool_choice=None, timeout=90):
+                            tool_choice=None, timeout=90, temperature=None):
     """Call an OpenAI-compatible endpoint (OpenRouter, Kimi, DeepSeek, OpenAI)."""
     headers = {
         "Authorization": f"Bearer {provider['api_key']}",
@@ -101,7 +101,7 @@ def _call_openai_compatible(provider, messages, tools=None,
     payload: Dict[str, Any] = {
         "model": provider["model"],
         "messages": messages,
-        "temperature": settings.llm_temperature,
+        "temperature": temperature if temperature is not None else settings.llm_temperature,
         "max_tokens": settings.llm_max_tokens,
     }
     if tools:
@@ -235,7 +235,7 @@ def _call_anthropic(provider, messages, tools=None,
 
 
 def call_llm(messages, tools=None, tool_choice=None,
-             model=None, timeout=None):
+             model=None, timeout=None, temperature=None, **kwargs):
     """Call LLM with automatic failover across all configured providers."""
     chain = _ensure_chain()
     if not chain:
@@ -257,7 +257,8 @@ def call_llm(messages, tools=None, tool_choice=None,
             else:
                 result = _call_openai_compatible(provider, messages, tools=tools,
                                                   tool_choice=tool_choice,
-                                                  timeout=ptimeout)
+                                                  timeout=ptimeout,
+                                                  temperature=temperature)
             elapsed = time.monotonic() - t0
             if result.get("ok"):
                 circuit.record_success()

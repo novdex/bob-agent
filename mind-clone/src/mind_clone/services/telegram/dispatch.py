@@ -87,7 +87,7 @@ def enqueue_command_job(job: dict) -> bool:
         COMMAND_QUEUE = asyncio.Queue()
     owner_id = int(job["owner_id"])
     if COMMAND_QUEUE.qsize() >= COMMAND_QUEUE_MAX_SIZE:
-        RUNTIME_STATE["command_queue_dropped"] = int(RUNTIME_STATE["command_queue_dropped"]) + 1
+        RUNTIME_STATE["command_queue_dropped"] = int(RUNTIME_STATE.get("command_queue_dropped", 0)) + 1
         return False
 
     increment_owner_queue(owner_id)
@@ -95,10 +95,10 @@ def enqueue_command_job(job: dict) -> bool:
         COMMAND_QUEUE.put_nowait(job)
     except Exception:
         decrement_owner_queue(owner_id)
-        RUNTIME_STATE["command_queue_dropped"] = int(RUNTIME_STATE["command_queue_dropped"]) + 1
+        RUNTIME_STATE["command_queue_dropped"] = int(RUNTIME_STATE.get("command_queue_dropped", 0)) + 1
         return False
 
-    RUNTIME_STATE["command_queue_enqueued"] = int(RUNTIME_STATE["command_queue_enqueued"]) + 1
+    RUNTIME_STATE["command_queue_enqueued"] = int(RUNTIME_STATE.get("command_queue_enqueued", 0)) + 1
     return True
 
 
@@ -166,7 +166,7 @@ async def command_queue_worker_loop(worker_id: int):
                 )
             finally:
                 RUNTIME_STATE["command_queue_processed"] = (
-                    int(RUNTIME_STATE["command_queue_processed"]) + 1
+                    int(RUNTIME_STATE.get("command_queue_processed", 0)) + 1
                 )
                 COMMAND_QUEUE.task_done()
     except asyncio.CancelledError:
@@ -203,7 +203,7 @@ async def dispatch_incoming_message(
         started = max(0, active_command_queue_worker_count() - before)
         if started > 0:
             RUNTIME_STATE["command_queue_worker_restarts"] = (
-                int(RUNTIME_STATE["command_queue_worker_restarts"]) + started
+                int(RUNTIME_STATE.get("command_queue_worker_restarts", 0)) + started
             )
             log.warning(
                 "COMMAND_QUEUE_WORKER_LATE_START started=%d alive=%d",
