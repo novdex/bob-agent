@@ -319,6 +319,39 @@ def run_agent_turn(
     # Save user message
     save_user_message(db, owner_id, user_message)
 
+    # -----------------------------------------------------------------------
+    # FAST PATH: Simple messages skip heavy context injection.
+    # "hi" responds in ~5s instead of ~30s.
+    # -----------------------------------------------------------------------
+    _simple_exact = {
+        "hi", "hello", "hey", "hlo", "hola", "yo", "sup",
+        "ok", "okay", "k", "sure", "yes", "no", "yep", "nope", "yeah", "nah",
+        "thanks", "thank you", "thx", "ty", "cheers",
+        "bye", "goodbye", "see you", "later", "gn", "good night",
+        "good morning", "gm", "good evening",
+        "how are you", "how r u", "whats up", "what's up", "wassup",
+        "nice", "cool", "great", "awesome", "perfect", "got it",
+        "lol", "haha", "hehe", "lmao", "hmm", "hm", "oh", "ah", "wow",
+    }
+    _msg_lower = user_message.strip().lower().rstrip("!?.,:;")
+    _is_simple = _msg_lower in _simple_exact
+    if not _is_simple and len(_msg_lower) < 15:
+        _tool_kw = {"search", "research", "find", "run", "create", "write",
+                     "read", "check", "schedule", "spawn", "execute", "analyze",
+                     "build", "fix", "deploy", "test", "show", "list", "delete"}
+        _is_simple = not any(kw in _msg_lower for kw in _tool_kw)
+
+    if _is_simple:
+        logger.info("FAST_PATH message='%s'", user_message[:30])
+        messages = prepare_messages_for_llm(db, owner_id)
+        messages = _sanitize_tool_pairs(messages)
+        result = call_llm(messages)
+        if result.get("ok") and result.get("content"):
+            response = result["content"]
+            save_assistant_message(db, owner_id, response)
+            return response
+    # -----------------------------------------------------------------------
+
     # Load identity
     identity = load_identity(db, owner_id)
 
@@ -344,128 +377,125 @@ def run_agent_turn(
         if content and content.strip():
             _injections.append({"role": "system", "content": content})
 
-    # Reasoning strategy
-    try:
-        from .reasoning import select_reasoning_strategy, build_reasoning_prefix, track_reasoning_metrics
-        strategy = select_reasoning_strategy(user_message)
-        prefix = build_reasoning_prefix(strategy, user_message)
-        if prefix:
-            _add_injection(prefix)
-            track_reasoning_metrics(strategy)
-    except Exception as _r_err:
-        logger.debug("REASONING_INJECT_SKIP: %s", str(_r_err)[:100])
+    # -----------------------------------------------------------------------
+    # PARALLEL CONTEXT INJECTION — run all 12 systems concurrently.
+    # -----------------------------------------------------------------------
+    import concurrent.futures as _cf
+    import time as _time
+    _inj_t0 = _time.monotonic()
 
-    # Skill playbooks
-    try:
-        from ..services.skills import select_active_skills_for_prompt
-        skill_blocks = select_active_skills_for_prompt(db, owner_id, user_message, top_k=3)
-        if skill_blocks:
-            _add_injection("[SKILL PLAYBOOKS]\n" + "\n\n".join(skill_blocks))
-    except Exception:
-        pass
+    def _inj_reasoning():
+        try:
+            from .reasoning import select_reasoning_strategy, build_reasoning_prefix, track_reasoning_metrics
+            s = select_reasoning_strategy(user_message)
+            p = build_reasoning_prefix(s, user_message)
+            if p: track_reasoning_metrics(s)
+            return p
+        except Exception: return None
 
-    # Predictive context
-    try:
-        from ..services.prediction import get_predictive_context_block
-        pred_block = get_predictive_context_block(db, owner_id, user_message)
-        if pred_block:
-            _add_injection(pred_block)
-    except Exception as _pred_err:
-        logger.debug("PREDICTIVE_INJECT_SKIP: %s", str(_pred_err)[:100])
+    def _inj_skills():
+        try:
+            from ..services.skills import select_active_skills_for_prompt
+            b = select_active_skills_for_prompt(db, owner_id, user_message, top_k=3)
+            return "[SKILL PLAYBOOKS]\n" + "\n\n".join(b) if b else None
+        except Exception: return None
 
-    # Long-term memory recall
-    try:
-        from .recall import get_recall_context_block
-        recall_block = get_recall_context_block(db, owner_id, user_message)
-        if recall_block:
-            _add_injection(recall_block)
-    except Exception as _recall_err:
-        logger.debug("RECALL_INJECT_SKIP: %s", str(_recall_err)[:100])
+    def _inj_prediction():
+        try:
+            from ..services.prediction import get_predictive_context_block
+            return get_predictive_context_block(db, owner_id, user_message)
+        except Exception: return None
 
-    # User profile
-    try:
-        from ..services.user_profile import get_profile_context_block
-        profile_block = get_profile_context_block(owner_id)
-        if profile_block:
-            _add_injection(profile_block)
-    except Exception as _up_err:
-        logger.debug("PROFILE_INJECT_SKIP: %s", str(_up_err)[:80])
+    def _inj_recall():
+        try:
+            from .recall import get_recall_context_block
+            return get_recall_context_block(db, owner_id, user_message)
+        except Exception: return None
 
-    # World model
-    try:
-        from ..services.world_model import get_world_context_block
-        world_block = get_world_context_block(owner_id)
-        if world_block:
-            _add_injection(world_block)
-    except Exception as _wm_err:
-        logger.debug("WORLD_MODEL_SKIP: %s", str(_wm_err)[:80])
+    def _inj_profile():
+        try:
+            from ..services.user_profile import get_profile_context_block
+            return get_profile_context_block(owner_id)
+        except Exception: return None
 
-    # JitRL examples
-    try:
-        from ..services.jit_rl import get_jit_examples_block
-        jit_block = get_jit_examples_block(owner_id, user_message)
-        if jit_block:
-            _add_injection(jit_block)
-    except Exception as _jit_err:
-        logger.debug("JITRL_SKIP: %s", str(_jit_err)[:80])
+    def _inj_world():
+        try:
+            from ..services.world_model import get_world_context_block
+            return get_world_context_block(owner_id)
+        except Exception: return None
 
-    # Episodic memories
-    try:
-        from .episodes import recall_similar_episodes
-        episodes = recall_similar_episodes(owner_id, user_message, limit=3)
-        if episodes:
-            ep_lines = []
-            for ep in episodes:
-                outcome_emoji = "✅" if ep["outcome"] == "success" else "❌" if ep["outcome"] == "failure" else "⚠️"
-                ep_lines.append(
-                    f"{outcome_emoji} Situation: {ep['situation'][:120]} | "
-                    f"Action: {ep['action_taken'][:120]} | "
-                    f"Outcome: {ep['outcome']}"
-                )
-            _add_injection(
-                "[EPISODIC MEMORY] Similar past situations you've handled:\n" +
-                "\n".join(ep_lines) +
-                "\nUse this context to improve your response."
-            )
-    except Exception as _ep_err:
-        logger.debug("EPISODE_INJECT_SKIP: %s", str(_ep_err)[:100])
+    def _inj_jitrl():
+        try:
+            from ..services.jit_rl import get_jit_examples_block
+            return get_jit_examples_block(owner_id, user_message)
+        except Exception: return None
 
-    # Reflexion lessons
-    try:
-        from ..services.reflexion import get_reflexion_block
-        reflex_block = get_reflexion_block(db, owner_id, user_message)
-        if reflex_block:
-            _add_injection(reflex_block)
-            _injected_lessons.append(reflex_block)
-    except Exception as _reflex_err:
-        logger.debug("REFLEXION_INJECT_SKIP: %s", str(_reflex_err)[:100])
+    def _inj_episodes():
+        try:
+            from .episodes import recall_similar_episodes
+            eps = recall_similar_episodes(owner_id, user_message, limit=3)
+            if not eps: return None
+            lines = []
+            for ep in eps:
+                o = "+" if ep["outcome"] == "success" else "-" if ep["outcome"] == "failure" else "?"
+                lines.append(f"[{o}] {ep['situation'][:120]} | {ep['action_taken'][:120]} | {ep['outcome']}")
+            return "[EPISODIC MEMORY]\n" + "\n".join(lines)
+        except Exception: return None
 
-    # DSPy optimised hints
-    try:
-        from ..services.prompt_optimizer import build_tool_hints_block
-        hints_block = build_tool_hints_block(db, owner_id)
-        if hints_block:
-            _add_injection(hints_block)
-    except Exception as _dspy_err:
-        logger.debug("DSPY_HINTS_SKIP: %s", str(_dspy_err)[:80])
+    def _inj_reflexion():
+        try:
+            from ..services.reflexion import get_reflexion_block
+            return get_reflexion_block(db, owner_id, user_message)
+        except Exception: return None
 
-    # Multi-turn planning
-    try:
-        from ..services.planner import get_plan_block
-        plan_block = get_plan_block(user_message)
-        if plan_block:
-            _add_injection(plan_block)
-    except Exception as _plan_err:
-        logger.debug("PLANNER_SKIP: %s", str(_plan_err)[:80])
+    def _inj_dspy():
+        try:
+            from ..services.prompt_optimizer import build_tool_hints_block
+            return build_tool_hints_block(db, owner_id)
+        except Exception: return None
 
-    # Tree of Thoughts
-    try:
-        from ..services.tree_of_thoughts import get_tot_block
-        tot_block = get_tot_block(user_message)
-        if tot_block:
-            _add_injection(tot_block)
-    except Exception as _tot_err:
-        logger.debug("TOT_SKIP: %s", str(_tot_err)[:80])
+    def _inj_planner():
+        try:
+            from ..services.planner import get_plan_block
+            return get_plan_block(user_message)
+        except Exception: return None
+
+    def _inj_tot():
+        try:
+            from ..services.tree_of_thoughts import get_tot_block
+            return get_tot_block(user_message)
+        except Exception: return None
+
+    _inj_fns = [
+        _inj_reasoning, _inj_skills, _inj_prediction, _inj_recall,
+        _inj_profile, _inj_world, _inj_jitrl, _inj_episodes,
+        _inj_reflexion, _inj_dspy, _inj_planner, _inj_tot,
+    ]
+    with _cf.ThreadPoolExecutor(max_workers=8) as _pool:
+        _futs = {_pool.submit(fn): fn.__name__ for fn in _inj_fns}
+        try:
+            for _f in _cf.as_completed(_futs, timeout=20):
+                try:
+                    _r = _f.result(timeout=5)
+                    if _r:
+                        _add_injection(_r)
+                        if _futs[_f] == "_inj_reflexion":
+                            _injected_lessons.append(_r)
+                except Exception:
+                    pass
+        except _cf.TimeoutError:
+            # Collect whatever finished, skip the rest
+            for _f, _n in _futs.items():
+                if _f.done():
+                    try:
+                        _r = _f.result(timeout=0)
+                        if _r and _r not in [i.get("content") for i in _injections]:
+                            _add_injection(_r)
+                    except Exception:
+                        pass
+            logger.warning("PARALLEL_INJECT_TIMEOUT — proceeding with partial context")
+
+    logger.info("PARALLEL_INJECT count=%d elapsed=%.1fs", len(_injections), _time.monotonic() - _inj_t0)
 
     # Insert all injections at position 1 (after system prompt, before history)
     if _injections:
