@@ -345,6 +345,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
 
     owner_id = resolve_owner_id(chat_id, username)
+
+    # Persist channel state on every message for restart resilience
+    try:
+        from mind_clone.services.channel_state import save_channel_state
+        save_channel_state(chat_id, username or "", owner_id)
+    except Exception as exc:
+        log.warning("Failed to save channel state: %s", exc)
+
     await dispatch_incoming_message(
         owner_id=owner_id,
         chat_id=chat_id,
@@ -353,6 +361,68 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         source="telegram",
         expect_response=False,
     )
+
+
+async def handle_photo_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle photo messages — analyse images using vision model.
+
+    Downloads the largest available resolution of the photo, sends it
+    to MiMo-V2-Pro via OpenRouter for analysis, and relays the result
+    back to the user.  Also dispatches the analysis text into the
+    agent loop so Bob can use tools based on what he sees.
+    """
+    from mind_clone.agent.identity import resolve_owner_id
+
+    chat_id = str(update.effective_chat.id)
+    username = update.effective_user.username if update.effective_user else None
+
+    owner_id = resolve_owner_id(chat_id, username)
+
+    # Persist channel state
+    try:
+        from mind_clone.services.channel_state import save_channel_state
+        save_channel_state(chat_id, username or "", owner_id)
+    except Exception:
+        pass
+
+    try:
+        # Get the largest photo (Telegram provides multiple sizes)
+        if not update.message.photo:
+            await send_telegram_message(chat_id, "No photo found in the message.")
+            return
+
+        photo = update.message.photo[-1]  # Largest resolution
+        caption = update.message.caption or ""
+
+        # Download the image via Telegram bot API
+        file_obj = await context.bot.get_file(photo.file_id)
+        image_data = await file_obj.download_as_bytearray()
+        image_bytes = bytes(image_data)
+
+        # Analyse the image
+        from mind_clone.services.vision import analyse_image
+        analysis = analyse_image(image_bytes, caption=caption, owner_id=owner_id)
+
+        # Send analysis back to user
+        await send_telegram_message(chat_id, analysis)
+
+        # Also dispatch to agent loop so Bob can use tools based on what he sees
+        agent_text = f"[Image analysis] {caption + ': ' if caption else ''}{analysis}"
+        await dispatch_incoming_message(
+            owner_id=owner_id,
+            chat_id=chat_id,
+            username=username or "unknown",
+            text=agent_text,
+            source="telegram",
+            expect_response=False,
+        )
+
+    except Exception as exc:
+        log.exception("Photo message handling failed: %s", exc)
+        await send_telegram_message(
+            chat_id,
+            f"Failed to analyse image: {str(exc)[:200]}",
+        )
 
 
 # ============================================================================

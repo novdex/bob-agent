@@ -73,6 +73,7 @@ from .commands import (  # noqa: F401
     cmd_approvals,
     cmd_cron,
     handle_message,
+    handle_photo_message,
 )
 
 # Bot helpers

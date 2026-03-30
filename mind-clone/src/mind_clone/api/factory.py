@@ -33,6 +33,25 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("Failed to load custom tools: %s", exc)
 
+    # Restore persistent channel state from disk (if any)
+    _restored_chat_id = None
+    try:
+        from ..services.channel_state import load_channel_state
+        _channel_state = load_channel_state()
+        if _channel_state and "telegram" in _channel_state:
+            _tg = _channel_state["telegram"]
+            _restored_chat_id = _tg.get("chat_id")
+            logger.info(
+                "Restored channel state: chat_id=%s owner_id=%s connected_at=%s",
+                _tg.get("chat_id"),
+                _tg.get("owner_id"),
+                _tg.get("connected_at"),
+            )
+        else:
+            logger.info("No saved channel state found — fresh start")
+    except Exception as exc:
+        logger.warning("Failed to load channel state on startup: %s", exc)
+
     # Start Telegram polling as a background task
     polling_task = None
     try:
@@ -66,6 +85,25 @@ async def lifespan(app: FastAPI):
 
             polling_task = asyncio.create_task(_run_telegram_polling())
             logger.info("Telegram polling task created")
+
+            # Send "Bob is back online" notification to the saved channel
+            if _restored_chat_id:
+                try:
+                    from ..services.telegram.messaging import send_telegram_message
+                    # Small delay to let polling initialise before sending
+                    async def _send_online_notice():
+                        await asyncio.sleep(3)
+                        try:
+                            await send_telegram_message(
+                                _restored_chat_id,
+                                "Bob is back online. All systems restored.",
+                            )
+                            logger.info("Sent 'back online' notification to chat %s", _restored_chat_id)
+                        except Exception as exc:
+                            logger.warning("Failed to send back-online notification: %s", exc)
+                    asyncio.create_task(_send_online_notice())
+                except Exception as exc:
+                    logger.warning("Failed to schedule back-online notification: %s", exc)
         else:
             logger.warning("Telegram bot token not configured, polling disabled")
     except Exception as exc:

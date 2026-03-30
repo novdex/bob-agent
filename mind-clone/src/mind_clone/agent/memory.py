@@ -287,8 +287,26 @@ def prepare_messages_for_llm(
     owner_id: int,
     recent_limit: int = 30,
 ) -> List[Dict[str, Any]]:
-    """Prepare messages for LLM context window."""
-    messages = get_conversation_history(db, owner_id, limit=recent_limit)
+    """Prepare messages for LLM context window.
+
+    Uses the Smart Context Engine to load all messages and intelligently
+    compress old casual chat while keeping important messages (tool calls,
+    corrections, long messages) fully intact.  Falls back to simple
+    recent-only history if the context engine is unavailable.
+    """
+    try:
+        from ..services.context_engine import build_smart_context
+        messages = build_smart_context(db, owner_id, recent_limit=min(recent_limit, 10))
+        logger.info(
+            "Using smart context engine for owner %d (%d messages)",
+            owner_id, len(messages),
+        )
+    except Exception as exc:
+        logger.warning(
+            "Smart context engine unavailable for owner %d, falling back: %s",
+            owner_id, exc,
+        )
+        messages = get_conversation_history(db, owner_id, limit=recent_limit)
 
     # Build system prompt — inline to avoid circular import with loop.py
     try:
