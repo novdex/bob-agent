@@ -86,6 +86,10 @@ class Settings(BaseSettings):
     )
     webhook_base_url: str = Field(default="https://your-domain.com", alias="WEBHOOK_BASE_URL")
 
+    # WhatsApp Cloud API (Meta Business)
+    whatsapp_token: str = Field(default="", alias="WHATSAPP_TOKEN")
+    whatsapp_phone_id: str = Field(default="", alias="WHATSAPP_PHONE_ID")
+
     # SSL/TLS
     ssl_certfile: str = Field(default="", alias="SSL_CERTFILE")
     ssl_keyfile: str = Field(default="", alias="SSL_KEYFILE")

@@ -198,6 +198,60 @@ def tool_browse_and_extract(args: dict) -> dict:
     except Exception as e:
         return {"ok": False, "error": str(e)[:200]}
 
+
+def tool_deep_research_pipeline(args: dict) -> dict:
+    """Tool: Run DeerFlow-style deep multi-agent research pipeline."""
+    try:
+        from ..services.deep_research import tool_deep_research as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def tool_browse(args: dict) -> dict:
+    """Tool: Browse a URL with headless Selenium and optionally extract info."""
+    try:
+        from ..services.browser_automation import tool_browse as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def tool_screenshot(args: dict) -> dict:
+    """Tool: Take a screenshot of a URL via headless browser."""
+    try:
+        from ..services.browser_automation import tool_screenshot as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def tool_send_whatsapp(args: dict) -> dict:
+    """Tool: Send a WhatsApp message via the Cloud API."""
+    try:
+        from ..services.whatsapp_bridge import tool_send_whatsapp as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def tool_safe_python(args: dict) -> dict:
+    """Tool: Run Python code in a sandboxed subprocess with timeout and blocklists."""
+    try:
+        from ..services.sandbox import tool_safe_python as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def tool_safe_shell(args: dict) -> dict:
+    """Tool: Run a shell command in a sandboxed subprocess with timeout and blocklists."""
+    try:
+        from ..services.sandbox import tool_safe_shell as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
 def tool_rag_search(args: dict) -> dict:
     try:
         from ..services.knowledge_base import tool_rag_search as _impl
@@ -666,6 +720,16 @@ TOOL_DISPATCH: Dict[str, Callable[[dict], dict]] = {
     "list_skills": tool_list_skills,
     "get_skill": tool_get_skill,
     "archive_skill": tool_archive_skill,
+    # DeerFlow deep research pipeline
+    "deep_research_pipeline": tool_deep_research_pipeline,
+    # Browser automation (Selenium headless)
+    "browse": tool_browse,
+    "screenshot": tool_screenshot,
+    # WhatsApp messaging
+    "send_whatsapp": tool_send_whatsapp,
+    # Sandboxed execution
+    "safe_python": tool_safe_python,
+    "safe_shell": tool_safe_shell,
 }
 
 # ---------------------------------------------------------------------------
@@ -679,6 +743,7 @@ CUSTOM_TOOL_REGISTRY: Dict[str, Dict[str, Any]] = {}
 TOOL_CATEGORIES: Dict[str, set] = {
     "web": {
         "search_web", "read_webpage", "deep_research", "read_pdf_url",
+        "deep_research_pipeline", "browse", "screenshot",
     },
     "file": {
         "read_file", "write_file", "list_directory",
@@ -696,7 +761,7 @@ TOOL_CATEGORIES: Dict[str, set] = {
     "browser": {
         "browser_open", "browser_get_text", "browser_click",
         "browser_type", "browser_screenshot", "browser_execute_js",
-        "browser_close",
+        "browser_close", "browse", "screenshot",
     },
     "desktop": {
         "desktop_session_start", "desktop_session_status",
@@ -741,15 +806,18 @@ TOOL_CATEGORIES: Dict[str, set] = {
     "research": {
         "research_github", "forge_tool", "meta_research", "meta_report", "run_briefing",
         "run_learning", "rag_search", "rag_ingest", "rag_store", "browse_and_extract",
+        "deep_research_pipeline",
     },
     "agents": {
         "spawn_agents",
     },
     "code": {
         "run_command", "execute_python", "sandbox_python", "sandbox_shell",
+        "safe_python", "safe_shell",
     },
     "communication": {
         "send_email", "save_research_note", "speak", "get_calendar", "create_reminder",
+        "send_whatsapp",
     },
     "monitoring": {
         "dashboard", "scan_triggers", "check_merge", "auto_merge",
@@ -779,7 +847,7 @@ _INTENT_KEYWORDS: Dict[str, List[str]] = {
     "codebase": ["codebase", "source code", "modify code", "self-modify", "your own code", "git"],
     "browser": ["browser", "chrome", "firefox", "webpage", "html", "dom"],
     "desktop": ["desktop", "screen", "click", "mouse", "keyboard", "window", "screenshot"],
-    "communication": ["email", "send", "message", "notify"],
+    "communication": ["email", "send", "message", "notify", "whatsapp"],
     "memory": ["memory", "remember", "recall", "lesson", "research", "knowledge"],
     "scheduler": ["schedule", "cron", "recurring", "timer", "periodic", "every day", "every hour"],
     "nodes": ["node", "remote", "execution"],
