@@ -41,10 +41,11 @@ _session = requests.Session()
 
 
 def _glove_cache_dir() -> Path:
-    """Return platform-appropriate cache directory for GloVe model files."""
-    local_appdata = os.getenv("LOCALAPPDATA")
-    if local_appdata:
-        return Path(local_appdata) / "mind-clone" / "models"
+    """Return cache directory for GloVe model files.
+
+    Always uses ``~/.mind-clone/models`` to stay consistent with the
+    single runtime directory convention.
+    """
     return Path.home() / ".mind-clone" / "models"
 
 

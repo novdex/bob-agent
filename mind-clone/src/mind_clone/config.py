@@ -46,10 +46,12 @@ def _parse_path_list(raw_value: str) -> List[Path]:
 
 
 def _default_runtime_dir() -> Path:
-    """Get default runtime directory."""
-    local_appdata = os.getenv("LOCALAPPDATA")
-    if local_appdata:
-        return Path(local_appdata) / "mind-clone"
+    """Get default runtime directory.
+
+    Always uses ``~/.mind-clone`` so that every code path (config, session,
+    vectors, etc.) resolves to the same database file regardless of whether
+    ``MIND_CLONE_DB_PATH`` is set in ``.env``.
+    """
     return Path.home() / ".mind-clone"
 
 
