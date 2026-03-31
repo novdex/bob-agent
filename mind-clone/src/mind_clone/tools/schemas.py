@@ -789,6 +789,77 @@ ALL_TOOL_SCHEMAS.append({
     },
 })
 
+# Safe self-improvement tool schemas (OpenClaw-style — NO source code modification)
+ALL_TOOL_SCHEMAS.extend([
+    {
+        "type": "function",
+        "function": {
+            "name": "create_skill_md",
+            "description": (
+                "Create a new markdown-based skill that teaches Bob a procedure. "
+                "The skill is saved as a .md file and gets injected into context "
+                "when a user message matches the trigger keywords. This is how Bob "
+                "teaches himself new behaviours WITHOUT modifying source code."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Skill name (used as filename, e.g. 'research_ai_news')",
+                    },
+                    "triggers": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of trigger phrases/keywords that activate this skill",
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "One-line description of what this skill does",
+                    },
+                    "steps": {
+                        "type": "string",
+                        "description": "Step-by-step procedure in markdown format",
+                    },
+                },
+                "required": ["name", "triggers", "description", "steps"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_skills_md",
+            "description": (
+                "List all markdown-based skills available to Bob. "
+                "Shows each skill's name, description, and trigger count."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "safe_improve",
+            "description": (
+                "Run Bob's safe nightly improvement cycle. Reviews tool performance, "
+                "identifies failure patterns, creates recovery skills, auto-tunes config, "
+                "loads plugins, and sends a report to Telegram. NEVER modifies source code. "
+                "This replaces the old dangerous code-rewriting experiment."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+        },
+    },
+])
+
 
 def get_tool_schemas() -> List[Dict[str, Any]]:
     """Get all tool schemas."""

@@ -143,6 +143,37 @@ def tool_run_experiment(args: dict) -> dict:
         return {"ok": False, "error": str(e)[:200]}
 
 
+# ---------------------------------------------------------------------------
+# Safe self-improvement tools (OpenClaw-style — NO source code modification)
+# ---------------------------------------------------------------------------
+
+def tool_create_skill_md(args: dict) -> dict:
+    """Tool: Create a new markdown-based skill that teaches Bob a procedure."""
+    try:
+        from ..services.skill_manager import tool_create_skill as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def tool_list_skills_md(args: dict) -> dict:
+    """Tool: List all markdown-based skills available to Bob."""
+    try:
+        from ..services.skill_manager import tool_list_skills_md as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def tool_safe_improve(args: dict) -> dict:
+    """Tool: Run safe nightly improvement — reviews performance, creates skills, tunes config. Never touches source code."""
+    try:
+        from ..services.safe_improve import tool_safe_improve as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
 def tool_link_memories(args: dict) -> dict:
     """Tool: Create a graph link between two memory nodes."""
     owner_id = int(args.get("_owner_id", 1))
@@ -730,6 +761,10 @@ TOOL_DISPATCH: Dict[str, Callable[[dict], dict]] = {
     # Sandboxed execution
     "safe_python": tool_safe_python,
     "safe_shell": tool_safe_shell,
+    # Safe self-improvement (OpenClaw-style — NO source code modification)
+    "create_skill_md": tool_create_skill_md,
+    "list_skills_md": tool_list_skills_md,
+    "safe_improve": tool_safe_improve,
 }
 
 # ---------------------------------------------------------------------------
@@ -836,6 +871,9 @@ TOOL_CATEGORIES: Dict[str, set] = {
     },
     "skill_library": {
         "save_skill", "recall_skill", "list_skills", "get_skill", "archive_skill",
+    },
+    "safe_improvement": {
+        "create_skill_md", "list_skills_md", "safe_improve",
     },
 }
 
