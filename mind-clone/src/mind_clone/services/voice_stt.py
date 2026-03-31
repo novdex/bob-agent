@@ -82,7 +82,7 @@ async def transcribe_voice(
         url = f"{api_base.rstrip('/')}/audio/transcriptions"
 
         files = {"file": (f"voice.{ext}", io.BytesIO(audio_bytes), mime_type)}
-        data = {"model": "whisper-1"}
+        data = {"model": "whisper-large-v3-turbo"}
         if language:
             data["language"] = language
 
