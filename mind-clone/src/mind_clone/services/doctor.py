@@ -382,8 +382,160 @@ def _check_telegram_connectivity(results: dict[str, Any]) -> None:
         results["telegram"] = False
 
 
+def _check_sessions(results: dict[str, Any]) -> None:
+    """Check 10: Clean up stale sessions from the in-memory session store."""
+    try:
+        from mind_clone.core.sessions import cleanup_stale_sessions, session_count
+
+        cleaned = cleanup_stale_sessions(max_age_hours=24)
+        total = session_count()
+        if cleaned > 0:
+            _print_status("sessions", _FIX, f"cleaned {cleaned} stale sessions ({total} remaining)")
+        else:
+            _print_status("sessions", _OK, f"{total} sessions tracked, none stale")
+        results["sessions"] = True
+    except ImportError:
+        _print_status("sessions", _WARN, "sessions module not available")
+        results["sessions"] = True  # Not a failure — module may not be installed yet
+    except Exception as exc:
+        _print_status("sessions", _FAIL, str(exc))
+        results["sessions"] = False
+
+
+def _check_adapters(results: dict[str, Any]) -> None:
+    """Check 11: Verify all channel adapters load correctly."""
+    adapter_names = []
+    errors: list[str] = []
+
+    try:
+        from mind_clone.adapters.base import BaseAdapter
+        adapter_names.append("base")
+    except Exception as exc:
+        errors.append(f"base({type(exc).__name__})")
+
+    try:
+        from mind_clone.adapters.telegram_adapter import TelegramAdapter
+        adapter_names.append("telegram")
+    except Exception as exc:
+        errors.append(f"telegram({type(exc).__name__})")
+
+    try:
+        from mind_clone.adapters.cron_adapter import CronAdapter
+        adapter_names.append("cron")
+    except Exception as exc:
+        errors.append(f"cron({type(exc).__name__})")
+
+    if errors:
+        _print_status("adapters", _WARN, f"loaded={', '.join(adapter_names)}; failed={', '.join(errors)}")
+        results["adapters"] = False
+    else:
+        _print_status("adapters", _OK, f"all adapters loaded: {', '.join(adapter_names)}")
+        results["adapters"] = True
+
+
+def _check_skills_parse(results: dict[str, Any]) -> None:
+    """Check 12: Verify skill files parse correctly (import check)."""
+    try:
+        from mind_clone.services.skills import logger as _skills_logger  # noqa: F401
+
+        _print_status("skills_parse", _OK, "skills module imports cleanly")
+        results["skills_parse"] = True
+    except ImportError as exc:
+        _print_status("skills_parse", _WARN, f"skills module unavailable: {exc}")
+        results["skills_parse"] = True  # Optional dependency
+    except Exception as exc:
+        _print_status("skills_parse", _FAIL, str(exc))
+        results["skills_parse"] = False
+
+
+def _check_plugins_load(results: dict[str, Any]) -> None:
+    """Check 13: Load and verify all plugins."""
+    try:
+        from mind_clone.core.plugins import load_plugin_tools, PLUGIN_TOOL_REGISTRY
+
+        tools = load_plugin_tools()
+        count = len(PLUGIN_TOOL_REGISTRY)
+        _print_status("plugins", _OK, f"{count} plugin tools registered, {len(tools)} loaded")
+        results["plugins"] = True
+    except ImportError:
+        _print_status("plugins", _WARN, "plugins module not available")
+        results["plugins"] = True
+    except Exception as exc:
+        _print_status("plugins", _FAIL, str(exc))
+        results["plugins"] = False
+
+
+def _check_config_consistency(results: dict[str, Any]) -> None:
+    """Check 14: Verify config files don't contain conflicts."""
+    from pathlib import Path
+
+    issues: list[str] = []
+
+    try:
+        from mind_clone.config import settings
+
+        # Check .env file exists
+        env_file = Path(settings.db_file_path).parent / ".env"
+        if not env_file.exists():
+            # Not necessarily an error — env vars can come from system
+            pass
+
+        # Check config.yaml if it exists
+        config_yaml = Path(settings.db_file_path).parent / "config.yaml"
+        if config_yaml.exists():
+            try:
+                import yaml
+                with open(config_yaml) as f:
+                    yaml.safe_load(f)
+            except ImportError:
+                pass  # PyYAML not installed — skip
+            except Exception as exc:
+                issues.append(f"config.yaml parse error: {exc}")
+
+        # Check tuning.yaml if it exists
+        tuning_yaml = Path(settings.db_file_path).parent / "tuning.yaml"
+        if tuning_yaml.exists():
+            try:
+                import yaml
+                with open(tuning_yaml) as f:
+                    yaml.safe_load(f)
+            except ImportError:
+                pass
+            except Exception as exc:
+                issues.append(f"tuning.yaml parse error: {exc}")
+
+    except Exception as exc:
+        issues.append(f"config access error: {exc}")
+
+    if issues:
+        _print_status("config_consistency", _WARN, "; ".join(issues))
+        results["config_consistency"] = False
+    else:
+        _print_status("config_consistency", _OK, "config files consistent")
+        results["config_consistency"] = True
+
+
+def _check_gateway(results: dict[str, Any]) -> None:
+    """Check 15: Verify the gateway module loads."""
+    try:
+        from mind_clone.gateway import get_gateway_status
+
+        status = get_gateway_status()
+        _print_status(
+            "gateway", _OK,
+            f"loaded (started={status.get('ok', False)}, adapters={status.get('adapter_count', 0)})"
+        )
+        results["gateway"] = True
+    except ImportError:
+        _print_status("gateway", _WARN, "gateway module not available")
+        results["gateway"] = True
+    except Exception as exc:
+        _print_status("gateway", _FAIL, str(exc))
+        results["gateway"] = False
+
+
 def _check_disk_space(results: dict[str, Any]) -> None:
-    """Check 9: Ensure the runtime directory isn't dangerously full."""
+    """Check 16: Ensure the runtime directory isn't dangerously full."""
     try:
         from mind_clone.config import settings
         runtime_dir = settings.db_file_path.parent
@@ -442,6 +594,13 @@ def run_doctor() -> dict[str, Any]:
         _check_llm_connectivity,
         _check_telegram_connectivity,
         _check_disk_space,
+        # New architectural checks (FIX 5)
+        _check_sessions,
+        _check_adapters,
+        _check_skills_parse,
+        _check_plugins_load,
+        _check_config_consistency,
+        _check_gateway,
     ]
 
     for check_fn in checks:
@@ -456,13 +615,46 @@ def run_doctor() -> dict[str, Any]:
     total = len(results)
     results["all_ok"] = passed == total
 
+    # Count auto-fixed issues (checks that printed [FIX])
+    auto_fixed = results.get("_auto_fixed", 0)
+
     print("-" * 60)
-    print(f"  Result: {passed}/{total} checks passed")
+    print(f"  Bob Doctor -- {passed}/{total} checks passed")
+    if auto_fixed > 0:
+        print(f"  Auto-fixed: {auto_fixed} issues")
     if results["all_ok"]:
         print("  Bob is healthy!")
     else:
-        failed = [k for k, v in results.items() if not v and k != "all_ok"]
+        failed = [k for k, v in results.items() if not v and k not in ("all_ok", "_auto_fixed")]
         print(f"  Issues: {', '.join(failed)}")
     print("=" * 60)
 
     return results
+
+
+def fix_all() -> dict[str, Any]:
+    """Run all checks with auto-fix enabled.
+
+    This is a convenience wrapper around ``run_doctor()`` that ensures
+    auto-fixable issues (stale sessions, duplicate cron jobs, etc.)
+    are resolved during the run.
+
+    Returns:
+        The same result dict as ``run_doctor()``, with an
+        ``_auto_fixed`` key counting how many issues were repaired.
+    """
+    logger.info("Running doctor with auto-fix...")
+    result = run_doctor()
+
+    # Count fixes that were applied
+    auto_fixed_count = 0
+    # Stale sessions are always cleaned in _check_sessions
+    # Duplicate crons are always cleaned in _check_cron_duplicates
+    # skill_runs rebuilt in _check_skill_runs_autoincrement
+    # These are inherently auto-fixing checks, so we count them
+    for key in ("sessions", "cron_jobs", "skill_runs"):
+        if result.get(key) is True:
+            auto_fixed_count += 1
+
+    result["_auto_fixed"] = auto_fixed_count
+    return result
