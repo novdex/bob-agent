@@ -471,14 +471,43 @@ async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYP
 
     await send_telegram_message(chat_id, f"[Voice] {text}")
 
-    await dispatch_incoming_message(
+    # Get Bob's response via dispatch
+    result = await dispatch_incoming_message(
         owner_id=owner_id,
         chat_id=chat_id,
         username=username or "unknown",
         text=text,
         source="telegram",
-        expect_response=False,
+        expect_response=True,
     )
+
+    # Send reply as voice note back
+    response_text = ""
+    if isinstance(result, dict):
+        response_text = str(result.get("response", ""))
+    elif isinstance(result, str):
+        response_text = result
+
+    if response_text:
+        try:
+            from mind_clone.services.voice_tts import synthesize_speech, tts_enabled
+            if tts_enabled():
+                import asyncio
+                import concurrent.futures
+                def _do_tts():
+                    import asyncio as _aio
+                    return _aio.run(synthesize_speech(response_text[:500]))
+                with concurrent.futures.ThreadPoolExecutor() as pool:
+                    loop = asyncio.get_event_loop()
+                    tts_ok, tts_result = await loop.run_in_executor(pool, _do_tts)
+                if tts_ok and isinstance(tts_result, bytes) and len(tts_result) > 100:
+                    from mind_clone.services.telegram.messaging import send_telegram_voice
+                    await send_telegram_voice(chat_id, tts_result)
+                    log.info("VOICE_REPLY_SENT chat_id=%s bytes=%d", chat_id, len(tts_result))
+                else:
+                    log.warning("TTS failed or too short, text reply already sent")
+        except Exception as e:
+            log.warning("VOICE_REPLY_FAIL: %s", str(e)[:150])
 
 
 # ============================================================================
