@@ -21,25 +21,6 @@ logger = logging.getLogger("mind_clone.services.scheduler")
 _scheduler_task: Optional[asyncio.Task] = None
 _running = False
 
-# Interest keywords for proactive monitoring alerts
-INTEREST_KEYWORDS = ['coding', 'bob_project']
-
-# Lazy import for InterestAlert to handle missing model gracefully
-_InterestAlert = None
-
-
-def _get_interest_alert_model():
-    """Get InterestAlert model with lazy loading and graceful fallback."""
-    global _InterestAlert
-    if _InterestAlert is None:
-        try:
-            from ..database.models import InterestAlert
-            _InterestAlert = InterestAlert
-        except ImportError:
-            logger.warning("InterestAlert model not available - alerts will be logged only")
-            _InterestAlert = False
-    return _InterestAlert
-
 
 async def scheduler_loop(interval_seconds: int = 60):
     """Main scheduler loop."""
@@ -76,19 +57,6 @@ async def run_due_jobs():
                 # Execute job
                 logger.info(f"Running scheduled job {job.id}: {job.name}")
                 
-                # Check for interest keywords and create alert if matched
-                job_message = (job.message or "").lower()
-                for keyword in INTEREST_KEYWORDS:
-                    if keyword in job_message:
-                        logger.info(f"Interest keyword '{keyword}' detected in job {job.id}")
-                        create_interest_alert(
-                            db=db,
-                            owner_id=job.owner_id,
-                            interest_keyword=keyword,
-                            job_id=job.id,
-                            job_name=job.name,
-                        )
-                
                 # Update job
                 job.last_run_at = now
                 job.run_count += 1
@@ -105,154 +73,6 @@ async def run_due_jobs():
     
     finally:
         db.close()
-
-
-def create_interest_alert(
-    db: Session,
-    owner_id: int,
-    interest_keyword: str,
-    job_id: int,
-    job_name: str,
-    message: Optional[str] = None,
-) -> Optional[dict]:
-    """
-    Create an interest alert when a monitoring job detects a matching keyword.
-    
-    Args:
-        db: Database session
-        owner_id: ID of the job owner
-        interest_keyword: The keyword that triggered the alert (e.g., 'coding', 'bob_project')
-        job_id: ID of the scheduled job that detected the interest
-        job_name: Name of the scheduled job
-        message: Optional custom alert message
-        
-    Returns:
-        Dictionary with alert info if created, None if InterestAlert model unavailable
-    """
-    InterestAlert = _get_interest_alert_model()
-    
-    now = datetime.now(timezone.utc)
-    alert_message = message or f"Proactive monitoring detected interest in '{interest_keyword}' via job '{job_name}'"
-    
-    if InterestAlert is False:
-        # Model not available - log alert only
-        logger.info(f"INTEREST ALERT [no DB]: owner={owner_id}, keyword={interest_keyword}, job={job_name}, msg={alert_message}")
-        return None
-    
-    try:
-        alert = InterestAlert(
-            owner_id=owner_id,
-            keyword=interest_keyword,
-            trigger_job_id=job_id,
-            message=alert_message,
-            created_at=now,
-            is_read=False,
-        )
-        db.add(alert)
-        db.commit()
-        db.refresh(alert)
-        
-        logger.info(f"Created interest alert {alert.id} for owner {owner_id}: {interest_keyword}")
-        return {
-            "id": int(alert.id),
-            "owner_id": int(alert.owner_id),
-            "keyword": alert.keyword,
-            "trigger_job_id": alert.trigger_job_id,
-            "message": alert.message,
-            "created_at": alert.created_at.isoformat() if alert.created_at else None,
-        }
-    except Exception as e:
-        logger.error(f"Failed to create interest alert: {e}")
-        # Log as fallback
-        logger.info(f"INTEREST ALERT [fallback]: owner={owner_id}, keyword={interest_keyword}, job={job_name}, msg={alert_message}")
-        return None
-
-
-def setup_interest_monitoring(
-    db: Session,
-    owner_id: int,
-    check_interval_seconds: int = 3600,
-) -> dict:
-    """
-    Set up proactive monitoring jobs for recurring interests.
-    
-    Creates scheduled jobs for:
-    1. 'coding' interest - periodic checks for coding-related activities
-    2. 'bob_project' interest - periodic checks for bob project-related activities
-    
-    Args:
-        db: Database session
-        owner_id: ID of the owner creating the monitoring jobs
-        check_interval_seconds: Interval between checks (default: 1 hour)
-        
-    Returns:
-        Dictionary with status of created jobs
-    """
-    monitoring_jobs = [
-        {
-            "name": "Interest Monitor: Coding",
-            "message": "proactive_interest_check:coding",
-            "description": "Proactive monitoring for coding-related interests",
-        },
-        {
-            "name": "Interest Monitor: Bob Project",
-            "message": "proactive_interest_check:bob_project",
-            "description": "Proactive monitoring for bob project-related interests",
-        },
-    ]
-    
-    created_jobs = []
-    errors = []
-    
-    for job_config in monitoring_jobs:
-        try:
-            # Check if job already exists
-            existing = db.query(ScheduledJob).filter(
-                ScheduledJob.owner_id == owner_id,
-                ScheduledJob.name == job_config["name"],
-                ScheduledJob.enabled.is_(True),
-            ).first()
-            
-            if existing:
-                logger.info(f"Monitoring job already exists: {job_config['name']}")
-                created_jobs.append({
-                    "name": job_config["name"],
-                    "id": int(existing.id),
-                    "status": "already_exists",
-                })
-                continue
-            
-            # Create the monitoring job
-            job = create_job(
-                db=db,
-                owner_id=owner_id,
-                name=job_config["name"],
-                message=job_config["message"],
-                interval_seconds=check_interval_seconds,
-                lane="interest_monitor",
-            )
-            
-            created_jobs.append({
-                "name": job_config["name"],
-                "id": int(job.id),
-                "interval_seconds": job.interval_seconds,
-                "status": "created",
-            })
-            logger.info(f"Created interest monitoring job: {job_config['name']} (id={job.id})")
-            
-        except Exception as e:
-            error_msg = f"Failed to create {job_config['name']}: {e}"
-            logger.error(error_msg)
-            errors.append(error_msg)
-    
-    return {
-        "ok": True,
-        "owner_id": owner_id,
-        "jobs_created": len([j for j in created_jobs if j.get("status") == "created"]),
-        "jobs_already_existed": len([j for j in created_jobs if j.get("status") == "already_exists"]),
-        "jobs": created_jobs,
-        "errors": errors,
-    }
 
 
 def create_job(
@@ -356,29 +176,17 @@ def _next_run_from_schedule(schedule: str, now_utc: datetime) -> datetime:
         parsed = parse_cron_expression(schedule)
         minute_raw = str(parsed.get("minute", "")).strip()
         hour_raw = str(parsed.get("hour", "")).strip()
-        
-        # Handle wildcard values - use next minute
         if minute_raw == "*" or hour_raw == "*":
             return now_utc + timedelta(minutes=1)
-        
-        # Parse and validate minute and hour
         minute = int(minute_raw)
         hour = int(hour_raw)
-        
         if minute < 0 or minute > 59 or hour < 0 or hour > 23:
             raise ValueError("Invalid minute/hour in cron schedule")
-        
-        # Build candidate datetime
         candidate = now_utc.replace(hour=hour, minute=minute, second=0, microsecond=0)
-        
-        # If candidate is in the past, move to next day
         if candidate <= now_utc:
             candidate = candidate + timedelta(days=1)
-        
         return candidate
-        
-    except (ValueError, TypeError) as e:
-        logger.warning(f"Invalid cron schedule '{schedule}': {e}")
+    except Exception:
         return now_utc + timedelta(seconds=60)
 
 
@@ -469,13 +277,12 @@ def tool_list_scheduled_jobs(
                     "name": j.name,
                     "message": j.message,
                     "interval_seconds": j.interval_seconds,
+                    "enabled": bool(j.enabled),
                     "next_run_at": j.next_run_at.isoformat() if j.next_run_at else None,
-                    "last_run_at": j.last_run_at.isoformat() if j.last_run_at else None,
-                    "enabled": j.enabled,
-                    "run_count": j.run_count,
                 }
                 for j in jobs[:limit]
             ],
+            "count": len(jobs),
         }
     except Exception as exc:
         return {"ok": False, "error": str(exc)[:300]}
@@ -483,19 +290,14 @@ def tool_list_scheduled_jobs(
         db.close()
 
 
-def tool_setup_interest_monitoring(
-    owner_id: int,
-    check_interval_seconds: int = 3600,
-) -> dict:
-    """Set up proactive interest monitoring (LLM-callable wrapper)."""
+def tool_disable_scheduled_job(owner_id: int, job_id: int) -> dict:
+    """Disable a scheduled job (LLM-callable wrapper)."""
     db = SessionLocal()
     try:
-        result = setup_interest_monitoring(
-            db=db,
-            owner_id=owner_id,
-            check_interval_seconds=check_interval_seconds,
-        )
-        return result
+        ok = disable_job(db, job_id, owner_id)
+        if ok:
+            return {"ok": True, "job_id": job_id, "disabled": True}
+        return {"ok": False, "error": f"Job {job_id} not found or not owned by user"}
     except Exception as exc:
         return {"ok": False, "error": str(exc)[:300]}
     finally:
