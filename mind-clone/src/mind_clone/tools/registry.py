@@ -174,6 +174,24 @@ def tool_safe_improve(args: dict) -> dict:
         return {"ok": False, "error": str(e)[:200]}
 
 
+def tool_run_chain(args: dict) -> dict:
+    """Tool: Run a named skill chain — execute skills in sequence, piping output forward."""
+    try:
+        from ..services.skill_chain import tool_run_chain as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def tool_create_chain(args: dict) -> dict:
+    """Tool: Create a new skill chain — define a pipeline of skills to run in sequence."""
+    try:
+        from ..services.skill_chain import tool_create_chain as _impl
+        return _impl(args)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
 def tool_link_memories(args: dict) -> dict:
     """Tool: Create a graph link between two memory nodes."""
     owner_id = int(args.get("_owner_id", 1))
@@ -765,6 +783,9 @@ TOOL_DISPATCH: Dict[str, Callable[[dict], dict]] = {
     "create_skill_md": tool_create_skill_md,
     "list_skills_md": tool_list_skills_md,
     "safe_improve": tool_safe_improve,
+    # Skill chaining — multi-skill pipelines
+    "run_chain": tool_run_chain,
+    "create_chain": tool_create_chain,
 }
 
 # ---------------------------------------------------------------------------

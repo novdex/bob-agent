@@ -336,6 +336,63 @@ async def cmd_cron(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db.close()
 
 
+async def handle_btw_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /btw side conversations -- separate context from main chat.
+
+    Creates a temporary side session so the quick question does not
+    pollute the main conversation history.  Responds with a concise
+    answer prefixed with ``[btw]``.
+
+    Supports both ``/btw <text>`` (slash command) and ``btw: <text>``
+    or ``btw <text>`` (plain message prefix, detected in handle_message).
+    """
+    from mind_clone.agent.identity import resolve_owner_id
+
+    chat_id = str(update.effective_chat.id)
+    username = update.effective_user.username if update.effective_user else None
+    text = update.message.text or ""
+
+    owner_id = resolve_owner_id(chat_id, username)
+
+    # Strip the /btw or btw: prefix to get the actual question
+    btw_text = text
+    for prefix in ("/btw ", "btw:", "btw "):
+        if btw_text.lower().startswith(prefix):
+            btw_text = btw_text[len(prefix):]
+            break
+    btw_text = btw_text.strip()
+
+    if not btw_text:
+        await send_telegram_message(chat_id, "[btw] What's your side question?")
+        return
+
+    try:
+        # Create a temporary side session (isolated from main conversation)
+        from mind_clone.core.sessions import create_session
+        side_session = create_session(owner_id, "btw", chat_id)
+        log.info("BTW_SESSION chat_id=%s session=%s", chat_id, side_session[:12])
+    except Exception as exc:
+        log.warning("BTW_SESSION_FAIL chat_id=%s error=%s", chat_id, str(exc)[:150])
+
+    try:
+        # Process with minimal context -- no main conversation history
+        from mind_clone.agent.llm import call_llm
+        result = call_llm([
+            {"role": "system", "content": "You are Bob. Answer this quick side question concisely."},
+            {"role": "user", "content": btw_text},
+        ])
+
+        if result.get("ok"):
+            answer = result.get("content", "I could not generate a response.")
+            await send_telegram_message(chat_id, f"[btw] {answer}")
+        else:
+            error = result.get("error", "Unknown error")
+            await send_telegram_message(chat_id, f"[btw] Sorry, I hit an error: {error[:200]}")
+    except Exception as exc:
+        log.error("BTW_HANDLER_FAIL chat_id=%s error=%s", chat_id, str(exc)[:200])
+        await send_telegram_message(chat_id, "[btw] Sorry, something went wrong.")
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle regular text messages."""
     from mind_clone.agent.identity import resolve_owner_id
@@ -343,6 +400,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = str(update.effective_chat.id)
     username = update.effective_user.username if update.effective_user else None
     text = update.message.text
+
+    # Intercept "btw:" and "btw " prefixed messages as side conversations
+    if text and (text.lower().startswith("btw:") or text.lower().startswith("btw ")):
+        return await handle_btw_message(update, context)
 
     owner_id = resolve_owner_id(chat_id, username)
 
@@ -553,6 +614,8 @@ async def telegram_webhook_handler(request_data: dict) -> dict:
                 await cmd_approvals(update, None)
             elif text.startswith("/cron"):
                 await cmd_cron(update, None)
+            elif text.startswith("/btw"):
+                await handle_btw_message(update, type("Context", (), {"args": text.split()[1:]}))
             else:
                 # Regular message
                 from mind_clone.agent.identity import resolve_owner_id

@@ -66,10 +66,20 @@ def run_isolated_task(
     owner_id: int,
     parent_context: str = "",
     tools_allowed: Optional[list] = None,
+    model: Optional[str] = None,
 ) -> dict:
-    """Run a task in an isolated context — no contamination from other tasks.
+    """Run a task in an isolated context -- no contamination from other tasks.
 
-    Returns structured result dict with ok, result, and any errors.
+    Args:
+        task_description: What the sub-agent should do.
+        owner_id: Owner ID for tool execution.
+        parent_context: Optional context snippet from the parent task.
+        tools_allowed: Optional whitelist of tool names the agent may use.
+        model: Optional LLM model override (e.g. "nvidia/nemotron-3-super-120b-a12b:free").
+            If provided, all LLM calls for this isolated task use this model.
+
+    Returns:
+        Structured result dict with ok, result, and any errors.
     """
     import uuid
     from ..agent.llm import call_llm
@@ -96,13 +106,19 @@ def run_isolated_task(
     else:
         tools = all_tools
 
+    # Build extra kwargs for model override
+    llm_kwargs: dict = {"temperature": 0.7}
+    if model:
+        llm_kwargs["model"] = model
+        logger.info("ISOLATED_TASK model_override=%s task_id=%s", model, task_id)
+
     ctx.status = "running"
     tool_loops = 0
     max_loops = 15
 
     try:
         while tool_loops < max_loops:
-            result = call_llm(messages, tools=tools, temperature=0.7)
+            result = call_llm(messages, tools=tools, **llm_kwargs)
 
             if not result.get("ok"):
                 return {

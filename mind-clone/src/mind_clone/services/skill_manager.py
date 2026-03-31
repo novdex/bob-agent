@@ -300,6 +300,104 @@ def tool_create_skill(args: dict) -> dict:
         return {"ok": False, "error": str(exc)[:300]}
 
 
+def auto_create_skill_from_turn(
+    owner_id: int,
+    user_message: str,
+    response: str,
+    tools_used: list,
+) -> bool:
+    """Auto-create a reusable skill from a successful multi-tool turn.
+
+    After Bob completes a task using 2+ tools, this function asks the LLM
+    to extract the procedure and saves it as a new markdown skill file.
+    Runs in a background thread so it never blocks the main agent loop.
+
+    Args:
+        owner_id: The owner who initiated the turn.
+        user_message: The original user request.
+        response: Bob's final response text.
+        tools_used: List of tool names used during the turn.
+
+    Returns:
+        True if a new skill was created, False otherwise.
+    """
+    if len(tools_used) < 2:
+        return False
+
+    try:
+        from ..agent.llm import call_llm
+
+        unique_tools = list(dict.fromkeys(tools_used))  # dedupe, preserve order
+        tools_str = ", ".join(unique_tools)
+
+        prompt = [
+            {
+                "role": "user",
+                "content": (
+                    f"The user asked: {user_message[:500]}\n"
+                    f"Bob used these tools: {tools_str}\n"
+                    f"Bob's response: {response[:500]}\n\n"
+                    "Create a reusable skill from this interaction. "
+                    'Return JSON: {"name": "...", "triggers": ["keyword1", "keyword2"], '
+                    '"description": "one-line description", '
+                    '"steps": "step-by-step markdown procedure"}\n'
+                    "Only return the JSON, nothing else."
+                ),
+            }
+        ]
+
+        result = call_llm(prompt, temperature=0.3)
+        if not result.get("ok"):
+            logger.warning(
+                "AUTO_SKILL_LLM_FAIL owner=%d error=%s",
+                owner_id, str(result.get("error", ""))[:200],
+            )
+            return False
+
+        content = result.get("content", "")
+
+        # Extract JSON from the response
+        import re as _re
+        json_match = _re.search(r"\{.*\}", content, _re.DOTALL)
+        if not json_match:
+            logger.debug("AUTO_SKILL_NO_JSON owner=%d", owner_id)
+            return False
+
+        import json as _json
+        data = _json.loads(json_match.group())
+
+        name = str(data.get("name", "")).strip()
+        triggers = data.get("triggers", [])
+        description = str(data.get("description", "")).strip()
+        steps = str(data.get("steps", "")).strip()
+
+        if not name or not steps:
+            logger.debug("AUTO_SKILL_INCOMPLETE owner=%d", owner_id)
+            return False
+
+        # Check for duplicates — if a similar skill already exists, skip
+        existing = match_skill(name)
+        if existing:
+            logger.debug(
+                "AUTO_SKILL_DUPLICATE owner=%d name=%s existing=%s",
+                owner_id, name, existing.get("name", "?"),
+            )
+            return False
+
+        # Create the skill
+        success = create_skill(name, triggers, description, steps)
+        if success:
+            logger.info("AUTO_SKILL_CREATED name=%s owner=%d tools=%s", name, owner_id, tools_str)
+        return success
+
+    except Exception as exc:
+        logger.warning(
+            "AUTO_SKILL_CREATE_ERROR owner=%d error=%s",
+            owner_id, str(exc)[:200],
+        )
+        return False
+
+
 def tool_list_skills_md(args: dict) -> dict:
     """Tool wrapper for list_skills — returns all markdown-based skills.
 

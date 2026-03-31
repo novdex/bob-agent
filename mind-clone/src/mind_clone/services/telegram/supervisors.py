@@ -321,6 +321,27 @@ async def run_due_cron_jobs_once() -> int:
     executed = 0
     for payload in dispatch_payloads:
         try:
+            # Create an isolated session for each cron job so one bad job
+            # cannot pollute another.  If a cron job errors 3 times the
+            # session auto-closes and a fresh one is created on the next run.
+            try:
+                from mind_clone.core.sessions import create_session
+                cron_session_id = create_session(
+                    owner_id=int(payload["owner_id"]),
+                    source="cron",
+                    chat_id=f"cron_{payload.get('job_id', 'unknown')}",
+                )
+                payload["session_id"] = cron_session_id
+                log.debug(
+                    "CRON_SESSION_CREATED job_id=%s session=%s",
+                    payload.get("job_id"), cron_session_id[:12],
+                )
+            except Exception as _sess_err:
+                log.warning(
+                    "CRON_SESSION_CREATE_FAIL job_id=%s error=%s",
+                    payload.get("job_id"), str(_sess_err)[:150],
+                )
+
             result = await dispatch_incoming_message(
                 owner_id=int(payload["owner_id"]),
                 chat_id=str(payload["chat_id"]),

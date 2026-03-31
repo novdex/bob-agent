@@ -546,6 +546,7 @@ def run_agent_turn(
     tool_loops = 0
     total_tokens = 0
     gap_hinted = False  # Only hint once per turn
+    _tools_used_this_turn: List[str] = []  # Track tool names for auto-skill creation
 
     while tool_loops < MAX_TOOL_LOOPS:
         # Call LLM
@@ -737,6 +738,18 @@ def run_agent_turn(
             except Exception:
                 pass
 
+            # 10. Auto-create skill from successful tool-heavy turns
+            try:
+                from ..services.skill_manager import auto_create_skill_from_turn
+                if len(_tools_used_this_turn) >= 2:
+                    threading.Thread(
+                        target=auto_create_skill_from_turn,
+                        args=(owner_id, user_message, content, _tools_used_this_turn),
+                        daemon=True,
+                    ).start()
+            except Exception:
+                pass
+
             return content
 
         # Save assistant message with tool calls
@@ -778,6 +791,8 @@ def run_agent_turn(
                 logger.info("Executing tool: %s", tool_name)
                 tool_result = execute_tool(tool_name, tool_args)
                 increment_runtime_state("desktop_actions_total")
+                # Track tool usage for auto-skill creation
+                _tools_used_this_turn.append(tool_name)
 
             # Reflexion: reflect on tool failures in background
             if not tool_result.get("ok") and tool_result.get("error"):

@@ -23,6 +23,7 @@ from .commands import (
     cmd_reject,
     cmd_approvals,
     cmd_cron,
+    handle_btw_message,
     handle_message,
     handle_photo_message,
     handle_voice_message,
@@ -62,6 +63,7 @@ def _setup_handlers(app: Application):
     app.add_handler(CommandHandler("reject", cmd_reject))
     app.add_handler(CommandHandler("approvals", cmd_approvals))
     app.add_handler(CommandHandler("cron", cmd_cron))
+    app.add_handler(CommandHandler("btw", handle_btw_message))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice_message))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo_message))

@@ -15,13 +15,61 @@ from typing import Optional
 from ..utils import truncate_text
 logger = logging.getLogger("mind_clone.services.agent_spawner")
 
+# ---------------------------------------------------------------------------
+# Per-agent model configuration
+# ---------------------------------------------------------------------------
+# Maps agent role names to preferred LLM models.  Sub-agents and council
+# agents look up their role here to decide which model to use.
+AGENT_MODELS: dict[str, str] = {
+    "technical": "nvidia/nemotron-3-super-120b-a12b:free",
+    "sentiment": "nvidia/nemotron-3-super-120b-a12b:free",
+    "chart": "nvidia/nemotron-3-super-120b-a12b:free",
+    "researcher": "nvidia/nemotron-3-super-120b-a12b:free",
+    "writer": "xiaomi/mimo-v2-pro",  # better quality for writing
+}
+
+
+def get_agent_model(role_or_model: str | None = None) -> str | None:
+    """Resolve a model string from a role name or explicit model identifier.
+
+    If *role_or_model* matches a key in ``AGENT_MODELS`` the mapped model
+    is returned.  If it looks like a model identifier (contains ``/``) it
+    is returned as-is.  Otherwise returns ``None`` (use default model).
+
+    Args:
+        role_or_model: Either a role key ("technical", "writer", ...) or
+            a full model identifier ("nvidia/nemotron-...").
+
+    Returns:
+        Resolved model string, or None to use the caller's default.
+    """
+    if not role_or_model:
+        return None
+    # Explicit model identifier (contains slash)
+    if "/" in role_or_model:
+        return role_or_model
+    # Lookup role
+    return AGENT_MODELS.get(role_or_model.lower())
+
 
 def spawn_sub_agent(task: str, owner_id: int, agent_id: str,
-                    results: dict, tools_allowed: list = None) -> None:
-    """Run a sub-agent task in a background thread."""
+                    results: dict, tools_allowed: list = None,
+                    model: str | None = None) -> None:
+    """Run a sub-agent task in a background thread.
+
+    Args:
+        task: The task description to execute.
+        owner_id: Owner ID for the agent.
+        agent_id: Unique identifier for this sub-agent.
+        results: Shared dict to store results (keyed by agent_id).
+        tools_allowed: Optional list of tool names the agent may use.
+        model: Optional LLM model override for this sub-agent.
+    """
     try:
         from .task_isolator import run_isolated_task
-        result = run_isolated_task(task, owner_id, tools_allowed=tools_allowed)
+        result = run_isolated_task(
+            task, owner_id, tools_allowed=tools_allowed, model=model,
+        )
         results[agent_id] = result
     except Exception as e:
         results[agent_id] = {"ok": False, "error": str(e)[:200]}
@@ -29,10 +77,20 @@ def spawn_sub_agent(task: str, owner_id: int, agent_id: str,
 
 def run_parallel_agents(tasks: list[dict], owner_id: int = 1,
                         timeout: int = 120) -> dict:
-    """
-    Run multiple sub-agent tasks in parallel.
-    tasks: [{"id": "agent1", "task": "...", "tools": [...]}]
-    Returns merged results dict.
+    """Run multiple sub-agent tasks in parallel.
+
+    Each task dict may include an optional ``model`` key to specify which
+    LLM model the sub-agent should use.  The value can be a full model
+    identifier (e.g. ``nvidia/nemotron-3-super-120b-a12b:free``) or a role
+    name that maps to a model via ``AGENT_MODELS``.
+
+    Args:
+        tasks: List of task dicts: [{"id": "...", "task": "...", "tools": [...], "model": "..."}]
+        owner_id: Owner ID for all agents.
+        timeout: Max seconds to wait for all agents.
+
+    Returns:
+        Merged results dict.
     """
     results = {}
     threads = []
@@ -40,16 +98,17 @@ def run_parallel_agents(tasks: list[dict], owner_id: int = 1,
         agent_id = task_spec.get("id", f"agent_{len(threads)}")
         task = task_spec.get("task", "")
         tools = task_spec.get("tools")
+        model = get_agent_model(task_spec.get("model"))
         if not task:
             continue
         t = threading.Thread(
             target=spawn_sub_agent,
-            args=(task, owner_id, agent_id, results, tools),
+            args=(task, owner_id, agent_id, results, tools, model),
             daemon=True,
         )
         threads.append(t)
         t.start()
-        logger.info("SPAWNED agent_id=%s task=%s", agent_id, task[:50])
+        logger.info("SPAWNED agent_id=%s model=%s task=%s", agent_id, model or "default", task[:50])
 
     for t in threads:
         t.join(timeout=timeout)
