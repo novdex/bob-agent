@@ -204,6 +204,27 @@ async def send_telegram_message(chat_id: str, text: str):
             except Exception as e:
                 log.error(f"Failed to send telegram message: {e}")
 
+async def send_telegram_voice(chat_id: str, audio_bytes: bytes, caption: str = ""):
+    """Send a voice message (MP3/OGG audio) to a Telegram chat."""
+    import io
+    try:
+        url = f"{TELEGRAM_API}/sendVoice"
+        async with httpx.AsyncClient(timeout=30, trust_env=False) as client:
+            files = {"voice": ("voice.mp3", io.BytesIO(audio_bytes), "audio/mpeg")}
+            data = {"chat_id": chat_id}
+            if caption:
+                data["caption"] = caption[:1000]
+            resp = await client.post(url, data=data, files=files)
+            if resp.status_code == 200:
+                body = resp.json()
+                if body.get("ok"):
+                    log.info("TELEGRAM_VOICE_SENT chat_id=%s bytes=%d", chat_id, len(audio_bytes))
+                    return
+            log.warning("TELEGRAM_VOICE_FAIL status=%d", resp.status_code)
+    except Exception as e:
+        log.warning("TELEGRAM_VOICE_ERROR: %s", str(e)[:150])
+
+
 async def send_typing_indicator(chat_id: str):
     """Send typing indicator to chat."""
     try:
