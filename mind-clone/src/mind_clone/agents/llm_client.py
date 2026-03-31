@@ -18,6 +18,11 @@ from .config import AgentConfig
 
 logger = logging.getLogger("mind_clone.agents.llm")
 
+try:
+    from .model_router import model_router
+except ImportError:
+    model_router = None
+
 
 class LLMClient:
     """Stateless LLM client for agent team calls."""
@@ -155,3 +160,186 @@ class LLMClient:
             "calls": self._call_count,
             "total_tokens": self._total_tokens,
         }
+
+    def check_vision_health(self, model: str, timeout: int = 10) -> bool:
+        """
+        Check if a vision model is healthy and available.
+
+        Args:
+            model: The model identifier to check
+            timeout: Request timeout in seconds
+
+        Returns:
+            True if the model is healthy, False otherwise
+        """
+        if model_router is not None:
+            try:
+                health = model_router.get_model_health(model)
+                if health is not None:
+                    return health
+            except Exception as e:
+                logger.warning("model_router health check failed for %s: %s", model, e)
+
+        url = f"{self.config.base_url}/models/{model}"
+        try:
+            resp = self._session.get(url, timeout=timeout)
+            if resp.status_code == 200:
+                logger.info("Vision model %s is healthy", model)
+                return True
+            else:
+                logger.warning("Vision model %s returned status %d", model, resp.status_code)
+                return False
+        except Exception as e:
+            logger.warning("Vision model %s health check failed: %s", model, e)
+            return False
+
+    def vision_chat(
+        self,
+        messages: List[Dict[str, Any]],
+        system: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """
+        Send a vision-capable chat completion request with automatic fallback.
+
+        First tries openai/gpt-5.4-nano, and if it fails or is unavailable,
+        automatically falls back to google/gemini-3-flash-preview.
+
+        Args:
+            messages: List of message dicts with {"role": ..., "content": ...}.
+                      Content can include image URLs for vision.
+            system: Optional system prompt
+            temperature: Override default temperature
+            max_tokens: Override default max_tokens
+
+        Returns:
+            {"content": str, "reasoning": str, "tokens": int, "ok": bool, "error": str,
+             "model": str}
+        """
+        primary_model = "openai/gpt-5.4-nano"
+        fallback_model = "google/gemini-3-flash-preview"
+
+        all_messages = []
+        if system:
+            all_messages.append({"role": "system", "content": system})
+        all_messages.extend(messages)
+
+        payload_base: Dict[str, Any] = {
+            "max_tokens": max_tokens or self.config.max_tokens,
+            "temperature": temperature if temperature is not None else self.config.temperature,
+        }
+
+        url = f"{self.config.base_url}/chat/completions"
+
+        # Check health of primary model first
+        if not self.check_vision_health(primary_model):
+            logger.warning(
+                "Primary vision model %s is not healthy, using fallback %s",
+                primary_model, fallback_model
+            )
+            model_to_use = fallback_model
+        else:
+            model_to_use = primary_model
+
+        payload = {"model": model_to_use, **payload_base, "messages": all_messages}
+
+        start = time.time()
+        try:
+            resp = self._session.post(url, json=payload, timeout=120)
+            elapsed = time.time() - start
+
+            if resp.status_code != 200:
+                error_body = resp.text[:500]
+                logger.error(
+                    "Vision LLM API error %d for model %s: %s",
+                    resp.status_code, model_to_use, error_body
+                )
+                
+                # If primary failed and we haven't tried fallback yet
+                if model_to_use == primary_model:
+                    logger.info("Primary vision model failed, trying fallback: %s", fallback_model)
+                    payload["model"] = fallback_model
+                    try:
+                        resp = self._session.post(url, json=payload, timeout=120)
+                        if resp.status_code != 200:
+                            error_body = resp.text[:500]
+                            logger.error(
+                                "Vision LLM API error %d for fallback model %s: %s",
+                                resp.status_code, fallback_model, error_body
+                            )
+                            return {
+                                "content": "",
+                                "reasoning": "",
+                                "tokens": 0,
+                                "ok": False,
+                                "error": f"Both primary and fallback models failed. API error {resp.status_code}: {error_body}",
+                                "model": fallback_model,
+                            }
+                        else:
+                            model_to_use = fallback_model
+                    except Exception as e:
+                        logger.error("Fallback vision model also failed: %s", e)
+                        return {
+                            "content": "",
+                            "reasoning": "",
+                            "tokens": 0,
+                            "ok": False,
+                            "error": f"Both primary and fallback models failed: {str(e)}",
+                            "model": fallback_model,
+                        }
+                else:
+                    return {
+                        "content": "",
+                        "reasoning": "",
+                        "tokens": 0,
+                        "ok": False,
+                        "error": f"API error {resp.status_code}: {error_body}",
+                        "model": model_to_use,
+                    }
+
+            data = resp.json()
+            choice = data.get("choices", [{}])[0]
+            message = choice.get("message", {})
+            content = message.get("content", "") or ""
+            reasoning = message.get("reasoning_content", "") or ""
+            usage = data.get("usage", {})
+            tokens = usage.get("total_tokens", 0)
+
+            self._call_count += 1
+            self._total_tokens += tokens
+
+            logger.info(
+                "Vision LLM call #%d: %d tokens, %.1fs, model=%s",
+                self._call_count, tokens, elapsed, model_to_use,
+            )
+
+            return {
+                "content": content,
+                "reasoning": reasoning,
+                "tokens": tokens,
+                "ok": True,
+                "error": "",
+                "model": model_to_use,
+            }
+
+        except requests.Timeout:
+            logger.error("Vision LLM API timeout after %.1fs", time.time() - start)
+            return {
+                "content": "",
+                "reasoning": "",
+                "tokens": 0,
+                "ok": False,
+                "error": "API request timed out",
+                "model": model_to_use,
+            }
+        except Exception as e:
+            logger.error("Vision LLM API exception: %s", e)
+            return {
+                "content": "",
+                "reasoning": "",
+                "tokens": 0,
+                "ok": False,
+                "error": str(e),
+                "model": model_to_use,
+            }
