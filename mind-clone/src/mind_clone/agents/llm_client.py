@@ -7,6 +7,7 @@ Model-agnostic — swap by changing AgentConfig.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -174,9 +175,15 @@ class LLMClient:
         """
         if model_router is not None:
             try:
-                health = model_router.get_model_health(model)
+                # get_model_health is async, so we need to run it in the event loop
+                health = asyncio.get_event_loop().run_until_complete(
+                    model_router.get_model_health(model)
+                )
                 if health is not None:
                     return health
+            except RuntimeError:
+                # No event loop running, fall back to direct HTTP check
+                logger.debug("No event loop available for health check, using HTTP fallback")
             except Exception as e:
                 logger.warning("model_router health check failed for %s: %s", model, e)
 
@@ -240,7 +247,7 @@ class LLMClient:
             )
             model = fallback_model
 
-        payload = {"model": model, "messages": all_messages, **payload_base}
+        payload = {**payload_base, "model": model, "messages": all_messages}
 
         start = time.time()
         try:
@@ -249,10 +256,7 @@ class LLMClient:
 
             if resp.status_code != 200:
                 error_body = resp.text[:500]
-                logger.error(
-                    "Vision LLM API error %d for model %s: %s",
-                    resp.status_code, model, error_body
-                )
+                logger.error("Vision LLM API error %d: %s", resp.status_code, error_body)
                 return {
                     "content": "",
                     "reasoning": "",
@@ -288,10 +292,7 @@ class LLMClient:
             }
 
         except requests.Timeout:
-            logger.error(
-                "Vision LLM API timeout after %.1fs for model %s",
-                time.time() - start, model
-            )
+            logger.error("Vision LLM API timeout after %.1fs", time.time() - start)
             return {
                 "content": "",
                 "reasoning": "",
@@ -301,7 +302,7 @@ class LLMClient:
                 "model": model,
             }
         except Exception as e:
-            logger.error("Vision LLM API exception for model %s: %s", model, e)
+            logger.error("Vision LLM API exception: %s", e)
             return {
                 "content": "",
                 "reasoning": "",

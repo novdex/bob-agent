@@ -121,11 +121,13 @@ async def _get_vision_model_health(model: str) -> Dict[str, Any]:
     return await get_model_health(model)
 
 
-def select_vision_model() -> str:
-    """Select vision model with automatic fallback logic.
+async def select_vision_model_async() -> str:
+    """Select vision model with automatic fallback logic (async version).
     
     Attempts to use the primary vision model. If it fails or is unavailable,
     automatically falls back to the secondary vision model.
+    
+    This async version properly checks model health when called from an async context.
     
     Returns:
         str: The selected vision model identifier.
@@ -134,11 +136,52 @@ def select_vision_model() -> str:
     fallback = VISION_FALLBACK_MODEL
     
     try:
-        # Try to get the running loop first - if one exists, we can't run
-        # blocking code so just return the primary model
+        primary_health = await _get_vision_model_health(primary)
+        if primary_health.get("ok", False):
+            return primary
+        
+        fallback_health = await _get_vision_model_health(fallback)
+        if fallback_health.get("ok", False):
+            return fallback
+    except Exception:
+        pass
+    
+    return primary
+
+
+def select_vision_model() -> str:
+    """Select vision model with automatic fallback logic.
+    
+    Attempts to use the primary vision model. If it fails or is unavailable,
+    automatically falls back to the secondary vision model.
+    
+    Note: When called from an async context, this function attempts to run
+    the health check synchronously which may not work properly. For async
+    contexts, use select_vision_model_async() instead.
+    
+    Returns:
+        str: The selected vision model identifier.
+    """
+    primary = VISION_MODEL
+    fallback = VISION_FALLBACK_MODEL
+    
+    try:
+        # Check if we're in an async context
         try:
             loop = asyncio.get_running_loop()
-            return primary
+            # In async context - try to run synchronously with a new loop
+            # This may fail on some event loops that don't allow nesting
+            loop = asyncio.new_event_loop()
+            try:
+                health = loop.run_until_complete(_get_vision_model_health(primary))
+                if health.get("ok", False):
+                    return primary
+                
+                fallback_health = loop.run_until_complete(_get_vision_model_health(fallback))
+                if fallback_health.get("ok", False):
+                    return fallback
+            finally:
+                loop.close()
         except RuntimeError:
             # No running loop, create one for this operation
             loop = asyncio.new_event_loop()
@@ -166,6 +209,7 @@ __all__ = [
     "configured_llm_profiles",
     "llm_failover_active",
     "select_vision_model",
+    "select_vision_model_async",
     "VISION_MODEL",
     "VISION_FALLBACK_MODEL",
 ]

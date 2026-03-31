@@ -425,6 +425,62 @@ async def handle_photo_message(update: Update, context: ContextTypes.DEFAULT_TYP
         )
 
 
+async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle voice messages: transcribe -> process -> reply.
+
+    Downloads voice file, transcribes via Groq Whisper STT, shows
+    transcription, then dispatches text to the agent loop.
+    """
+    from mind_clone.agent.identity import resolve_owner_id
+
+    chat_id = str(update.effective_chat.id)
+    username = update.effective_user.username if update.effective_user else None
+    owner_id = resolve_owner_id(chat_id, username)
+
+    voice = update.message.voice
+    if not voice:
+        return
+
+    log.info("VOICE_MESSAGE_RECEIVED chat_id=%s duration=%ss", chat_id, voice.duration)
+
+    try:
+        voice_file = await context.bot.get_file(voice.file_id)
+        audio_bytes = await voice_file.download_as_bytearray()
+        audio_bytes = bytes(audio_bytes)
+    except Exception as e:
+        log.error("VOICE_DOWNLOAD_FAIL: %s", str(e)[:150])
+        await send_telegram_message(chat_id, "Could not download voice message.")
+        return
+
+    try:
+        from mind_clone.services.voice_stt import transcribe_voice, stt_enabled
+        if not stt_enabled():
+            await send_telegram_message(chat_id, "Voice transcription is not configured.")
+            return
+
+        ok, text = await transcribe_voice(audio_bytes, mime_type="audio/ogg")
+        if not ok:
+            await send_telegram_message(chat_id, f"Could not transcribe voice: {text}")
+            return
+
+        log.info("VOICE_TRANSCRIBED text='%s'", text[:80])
+    except Exception as e:
+        log.error("VOICE_STT_FAIL: %s", str(e)[:150])
+        await send_telegram_message(chat_id, "Voice transcription failed.")
+        return
+
+    await send_telegram_message(chat_id, f"[Voice] {text}")
+
+    await dispatch_incoming_message(
+        owner_id=owner_id,
+        chat_id=chat_id,
+        username=username or "unknown",
+        text=text,
+        source="telegram",
+        expect_response=False,
+    )
+
+
 # ============================================================================
 # Webhook Handler
 # ============================================================================

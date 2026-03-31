@@ -228,72 +228,85 @@ class Orchestrator:
                 branch = self.workspace.create_task_branch(task)
                 result["branch"] = branch
                 self._log_event("branch_created", branch)
-                
+
                 # 2. Planner creates plan
+                self._log_event("phase", "planning")
                 plan = self.planner.create_plan(task)
                 result["plan"] = plan
-                self._log_event("plan_created", f"Plan with {len(plan.get('steps', []))} steps")
+                self._log_event("plan_created", str(plan.get("summary", "")))
                 
-                # Save checkpoint after planning
+                # Save checkpoint after planning phase
                 self.save_checkpoint(iteration, {
                     "task": task,
                     "branch": branch,
                     "plan": plan,
-                    "changes": result["changes"],
-                    "review": result["review"],
-                    "tests": result["tests"],
+                    "changes": result.get("changes", []),
+                    "review": result.get("review", {}),
+                    "tests": result.get("tests", {}),
                 })
-                
+
                 # 3. Coder executes plan
+                self._log_event("phase", "coding")
                 changes = self.coder.execute_plan(plan)
                 result["changes"] = changes
-                self._log_event("code_executed", f"{len(changes)} changes made")
+                self._log_event("changes_made", f"{len(changes)} changes")
                 
-                # Save checkpoint after coding
+                # Save checkpoint after coding phase
                 self.save_checkpoint(iteration, {
                     "task": task,
                     "branch": branch,
                     "plan": plan,
                     "changes": changes,
-                    "review": result["review"],
-                    "tests": result["tests"],
+                    "review": result.get("review", {}),
+                    "tests": result.get("tests", {}),
                 })
-                
+
                 # 4. Reviewer reviews changes
+                self._log_event("phase", "review")
                 review = self.reviewer.review_changes(changes)
                 result["review"] = review
-                self._log_event("review_completed", f"Status: {review.get('status', 'unknown')}")
+                self._log_event("review_complete", f"approved={review.get('approved', False)}")
                 
-                # Save checkpoint after review
+                # Save checkpoint after review phase
                 self.save_checkpoint(iteration, {
                     "task": task,
                     "branch": branch,
                     "plan": plan,
                     "changes": changes,
                     "review": review,
-                    "tests": result["tests"],
+                    "tests": result.get("tests", {}),
                 })
-                
-                if review.get("status") == "rejected":
-                    if iteration < max_iterations - 1:
-                        self._log_event("review_rejected", "Attempting fixes")
-                        # Coder fixes issues
-                        fixes = self.coder.fix_issues(review.get("issues", []))
-                        result["changes"].extend(fixes)
-                        iteration += 1
+
+                if not review.get("approved", False):
+                    # If rejected, Coder fixes (up to max_retries)
+                    self._log_event("review_rejected", review.get("reason", "No reason provided"))
+                    iteration += 1
+                    if iteration < max_iterations:
+                        self._log_event("retry", f"Attempting fix, iteration {iteration + 1}")
+                        # Save checkpoint before retry
+                        self.save_checkpoint(iteration, {
+                            "task": task,
+                            "branch": branch,
+                            "plan": plan,
+                            "changes": changes,
+                            "review": review,
+                            "tests": result.get("tests", {}),
+                        })
                         continue
                     else:
-                        result["error"] = "Max review iterations reached"
-                        self._log_event("max_iterations_reached", "Review")
-                        self.workspace.abort_and_revert()
+                        self._log_event("max_retries_reached", "Giving up after max retries")
+                        result["status"] = "failed"
+                        result["failure_reason"] = "review_rejected_max_retries"
+                        self._save_log(result)
                         return result
-                
+
                 # 5. Tester runs tests
+                self._log_event("phase", "testing")
                 tests = self.tester.run_tests()
                 result["tests"] = tests
-                self._log_event("tests_completed", f"Passed: {tests.get('passed', 0)}")
+                self._log_event("tests_complete", f"passed={tests.get('passed', 0)}, failed={tests.get('failed', 0)}")
                 
-                # Save checkpoint after testing
+                # Save checkpoint after testing phase
                 self.save_checkpoint(iteration, {
                     "task": task,
                     "branch": branch,
@@ -302,42 +315,58 @@ class Orchestrator:
                     "review": review,
                     "tests": tests,
                 })
-                
-                if not tests.get("ok", False):
-                    if iteration < max_iterations - 1:
-                        self._log_event("tests_failed", "Attempting fixes")
-                        # Coder fixes test failures
-                        fixes = self.coder.fix_issues(tests.get("failures", []))
-                        result["changes"].extend(fixes)
-                        iteration += 1
+
+                if not tests.get("all_passed", False):
+                    # If tests failed, Coder fixes (up to max_retries)
+                    self._log_event("tests_failed", tests.get("message", "Tests failed"))
+                    iteration += 1
+                    if iteration < max_iterations:
+                        self._log_event("retry", f"Attempting fix, iteration {iteration + 1}")
+                        # Save checkpoint before retry
+                        self.save_checkpoint(iteration, {
+                            "task": task,
+                            "branch": branch,
+                            "plan": plan,
+                            "changes": changes,
+                            "review": review,
+                            "tests": tests,
+                        })
                         continue
                     else:
-                        result["error"] = "Max test iterations reached"
-                        self._log_event("max_iterations_reached", "Tests")
-                        self.workspace.abort_and_revert()
+                        self._log_event("max_retries_reached", "Giving up after max retries")
+                        result["status"] = "failed"
+                        result["failure_reason"] = "tests_failed_max_retries"
+                        self._save_log(result)
                         return result
+
+                # 6. Commit and merge to original branch
+                self._log_event("phase", "commit_merge")
+                commit_result = self.workspace.commit_and_merge(branch)
+                result["commit"] = commit_result
+                self._log_event("commit_complete", commit_result.get("commit_sha", ""))
                 
-                # 6. Commit and merge
-                self.workspace.commit_and_merge()
-                self._log_event("merge_complete", "Changes merged successfully")
-                
-                # 7. Cleanup
-                self.workspace.cleanup()
-                self._log_event("cleanup_complete", "Workspace cleaned up")
-                
-                # Clear checkpoint on success
+                # Save final checkpoint before success
+                self.save_checkpoint(iteration, {
+                    "task": task,
+                    "branch": branch,
+                    "plan": plan,
+                    "changes": changes,
+                    "review": review,
+                    "tests": tests,
+                })
+
+                # Success!
+                result["status"] = "success"
+                self._log_event("pipeline_complete", "All phases completed successfully")
+                self._save_log(result)
                 self.clear_checkpoint()
-                
-                result["ok"] = True
-                self._log_event("pipeline_complete", "Task completed successfully")
                 return result
-                
+
             except Exception as e:
-                error_msg = f"Iteration {iteration} failed: {e}"
-                self._log_event("iteration_error", error_msg)
-                logger.exception(error_msg)
+                self._log_event("fatal_error", str(e))
+                logger.exception("Pipeline failed with fatal error")
                 
-                # Save checkpoint on error for potential resume
+                # Save error checkpoint before cleanup
                 self.save_checkpoint(iteration, {
                     "task": task,
                     "branch": result.get("branch", ""),
@@ -345,199 +374,73 @@ class Orchestrator:
                     "changes": result.get("changes", []),
                     "review": result.get("review", {}),
                     "tests": result.get("tests", {}),
+                    "error": str(e),
                 })
                 
-                if iteration >= max_iterations - 1:
-                    result["error"] = f"Max iterations reached after error: {e}"
-                    self.workspace.abort_and_revert()
-                    return result
+                # Revert everything on fatal error
+                self._log_event("revert", "Reverting all changes due to fatal error")
+                self.workspace.revert_all()
                 
-                iteration += 1
-        
-        result["error"] = "Pipeline failed after all iterations"
-        self.workspace.abort_and_revert()
+                result["status"] = "failed"
+                result["failure_reason"] = f"fatal_error: {str(e)}"
+                self._save_log(result)
+                return result
+
+        # If we exit the loop without success
+        result["status"] = "failed"
+        result["failure_reason"] = "max_iterations_exceeded"
+        self._save_log(result)
         return result
 
     def run(self, task: str, resume: bool = False) -> Dict[str, Any]:
         """
-        Execute a full task pipeline.
-
+        Run the full agent pipeline.
+        
         Args:
             task: Natural language description of what to do
             resume: If True, attempt to resume from checkpoint
-
+            
         Returns:
-            {
-                "ok": bool,
-                "task": str,
-                "branch": str,
-                "plan": dict,
-                "changes": list,
-                "review": dict,
-                "tests": dict,
-                "error": str,
-                "duration_s": float,
-                "llm_stats": dict,
-                "log": list,
-                "resumed": bool,
-                "checkpoint_info": dict,
-            }
+            Result dict with pipeline execution details
         """
-        start = time.time()
-        result = {
-            "ok": False,
+        self._log_event("run_start", f"Starting pipeline for task: {task[:100]}...")
+        
+        result: Dict[str, Any] = {
             "task": task,
-            "branch": "",
-            "plan": {},
-            "changes": [],
-            "review": {},
-            "tests": {},
-            "error": "",
-            "duration_s": 0,
-            "llm_stats": {},
-            "log": [],
-            "resumed": False,
-            "checkpoint_info": {},
+            "status": "running",
+            "started_at": datetime.now().isoformat(),
         }
-
-        self._log_event("start", f"Task: {task[:200]}")
-
-        # Check for existing checkpoint and offer resume
-        if self.has_checkpoint():
-            checkpoint = self.load_checkpoint()
-            if checkpoint:
-                self._log_event("checkpoint_found", 
-                               f"Found checkpoint from iteration {checkpoint.get('iteration', 0)}")
-                logger.info(f"Found checkpoint: iteration {checkpoint.get('iteration', 0)}")
-                
-                # Restore state from checkpoint
+        
+        # Check for existing checkpoint
+        checkpoint = self.load_checkpoint()
+        start_iteration = 0
+        
+        if checkpoint:
+            if resume:
+                self._log_event("checkpoint_found", f"Resuming from iteration {checkpoint.get('iteration', 0)}")
+                result = self._resume_from_checkpoint(task, result, checkpoint)
+                start_iteration = checkpoint.get("iteration", 0) + 1
+                result["status"] = "running"
                 result["resumed"] = True
-                self._log = checkpoint.get("log", [])
-                result["log"] = self._log
-                
-                # Return checkpoint info for caller to decide on resume
-                result["checkpoint_info"] = {
-                    "iteration": checkpoint.get("iteration", 0),
-                    "task": checkpoint.get("task", ""),
-                    "branch": checkpoint.get("branch", ""),
-                    "timestamp": checkpoint.get("timestamp", ""),
-                    "plan": checkpoint.get("plan", {}),
-                    "changes": checkpoint.get("changes", []),
-                    "review": checkpoint.get("review", {}),
-                    "tests": checkpoint.get("tests", {}),
-                }
-                
-                # If resume flag is set, skip to the checkpoint state
-                if resume:
-                    self._log_event("resume_attempt", "Attempting to resume from checkpoint")
-                    return self._resume_from_checkpoint(task, result, checkpoint)
-
-        try:
-            result = self._execute_pipeline(task, result)
-        except Exception as e:
-            result["error"] = f"Pipeline crashed: {e}"
-            self._log_event("crash", str(e))
-            logger.exception("Orchestrator pipeline crashed")
-            # Safety: revert everything
-            self.workspace.abort_and_revert()
-
-        result["duration_s"] = round(time.time() - start, 1)
-        result["llm_stats"] = self.llm.stats
+            else:
+                self._log_event("checkpoint_found_skip", "Checkpoint exists but resume=False, starting fresh")
+                self.clear_checkpoint()
+        else:
+            self._log_event("no_checkpoint", "Starting fresh execution")
+        
+        # Execute the pipeline
+        result = self._execute_pipeline(task, result, start_iteration)
+        
+        result["completed_at"] = datetime.now().isoformat()
         result["log"] = self._log
-
-        # Persist log for debugging
-        self._save_log(result)
+        
+        self._log_event("run_complete", f"Pipeline finished with status: {result.get('status', 'unknown')}")
         
         return result
 
-    def run_experiment(
-        self, 
-        tasks: list[str], 
-        experiment_name: Optional[str] = None,
-        resume: bool = False
-    ) -> Dict[str, Any]:
-        """
-        Run multiple tasks as an experiment loop with checkpoint support.
-        
-        Args:
-            tasks: List of natural language task descriptions
-            experiment_name: Name for this experiment (used in checkpoint file)
-            resume: If True, attempt to resume from checkpoint
-            
-        Returns:
-            {
-                "experiment_name": str,
-                "ok": bool,
-                "results": list[Dict[str, Any]],
-                "summary": dict,
-                "duration_s": float,
-            }
-        """
-        start = time.time()
-        experiment_name = experiment_name or f"experiment_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        
-        # Create experiment-specific checkpoint directory
-        exp_checkpoint_dir = os.path.join(self.checkpoint_dir, experiment_name)
-        os.makedirs(exp_checkpoint_dir, exist_ok=True)
-        
-        exp_checkpoint_file = os.path.join(exp_checkpoint_dir, "experiment_state.json")
-        
-        # Update checkpoint file for this experiment
-        self._checkpoint_file = exp_checkpoint_file
-        
-        results = []
-        completed_tasks = 0
-        failed_tasks = 0
-        
-        self._log_event("experiment_start", f"Starting experiment: {experiment_name}")
-        
-        # Check for experiment checkpoint
-        if self.has_checkpoint():
-            checkpoint = self.load_checkpoint()
-            if checkpoint and resume:
-                completed_tasks = checkpoint.get("completed_tasks", 0)
-                results = checkpoint.get("results", [])
-                self._log = checkpoint.get("log", [])
-                self._log_event("experiment_resume", f"Resuming at task {completed_tasks + 1}")
-        
-        for i, task in enumerate(tasks[completed_tasks:], start=completed_tasks):
-            self._log_event("experiment_task_start", f"Task {i + 1}/{len(tasks)}: {task[:100]}")
-            
-            task_result = self.run(task, resume=resume and i == completed_tasks)
-            results.append(task_result)
-            
-            if task_result.get("ok", False):
-                completed_tasks += 1
-                self._log_event("experiment_task_complete", f"Task {i + 1} succeeded")
-            else:
-                failed_tasks += 1
-                self._log_event("experiment_task_failed", f"Task {i + 1} failed: {task_result.get('error', 'unknown')}")
-            
-            # Save experiment checkpoint after each task
-            self.save_checkpoint(i, {
-                "task": task,
-                "experiment_name": experiment_name,
-                "completed_tasks": completed_tasks,
-                "results": results,
-                "failed_tasks": failed_tasks,
-            })
-        
-        # Clear checkpoint on experiment completion
+    def cleanup(self) -> None:
+        """Clean up workspace resources."""
+        self._log_event("cleanup", "Starting cleanup")
+        self.workspace.cleanup()
         self.clear_checkpoint()
-        
-        self._log_event("experiment_complete", f"Completed: {completed_tasks}, Failed: {failed_tasks}")
-        
-        summary = {
-            "total_tasks": len(tasks),
-            "completed_tasks": completed_tasks,
-            "failed_tasks": failed_tasks,
-            "success_rate": completed_tasks / len(tasks) if tasks else 0,
-        }
-        
-        return {
-            "experiment_name": experiment_name,
-            "ok": failed_tasks == 0,
-            "results": results,
-            "summary": summary,
-            "duration_s": round(time.time() - start, 1),
-        }
+        self._log_event("cleanup_complete", "Cleanup finished")

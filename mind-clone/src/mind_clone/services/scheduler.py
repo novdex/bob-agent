@@ -21,6 +21,12 @@ logger = logging.getLogger("mind_clone.services.scheduler")
 _scheduler_task: Optional[asyncio.Task] = None
 _running = False
 
+# Interest keywords for proactive monitoring - consolidated here to avoid duplication
+INTEREST_KEYWORDS = ["coding", "bob_project"]
+
+# Default monitoring intervals (in seconds)
+INTEREST_MONITOR_INTERVAL = 3600  # 1 hour
+
 
 async def scheduler_loop(interval_seconds: int = 60):
     """Main scheduler loop."""
@@ -57,6 +63,14 @@ async def run_due_jobs():
                 # Execute job
                 logger.info(f"Running scheduled job {job.id}: {job.name}")
                 
+                # Check for interest keyword matches in the message
+                alert_data = check_interest_keywords(job.message, job.owner_id, db)
+                if alert_data and alert_data.get("triggered"):
+                    logger.info(
+                        f"Interest alert triggered for job {job.id} "
+                        f"with keywords: {alert_data.get('matched_keywords')}"
+                    )
+                
                 # Update job
                 job.last_run_at = now
                 job.run_count += 1
@@ -73,6 +87,147 @@ async def run_due_jobs():
     
     finally:
         db.close()
+
+
+def check_interest_keywords(message: str, owner_id: int, db: Session) -> dict:
+    """
+    Check if a message contains any interest keywords and trigger alert if found.
+    
+    Args:
+        message: The message/job content to check
+        owner_id: The owner ID for the alert
+        
+    Returns:
+        Dict with 'triggered' bool and alert details if triggered
+    """
+    if not message:
+        return {"triggered": False}
+    
+    message_lower = message.lower()
+    matched = [kw for kw in INTEREST_KEYWORDS if kw in message_lower]
+    
+    if matched:
+        return create_interest_alert(
+            owner_id=owner_id,
+            message=message,
+            matched_keywords=matched,
+            source="scheduler_job",
+        )
+    
+    return {"triggered": False}
+
+
+def create_interest_alert(
+    owner_id: int,
+    message: str,
+    matched_keywords: List[str],
+    source: str = "scheduler_job",
+    db: Optional[Session] = None,
+) -> dict:
+    """
+    Create an interest alert for matched keywords.
+    
+    Args:
+        owner_id: The user/owner ID
+        message: The triggering message
+        matched_keywords: List of matched interest keywords
+        source: Source identifier (e.g., 'scheduler_job', 'user_message')
+        db: Optional existing database session
+        
+    Returns:
+        Dict with alert details and triggered status
+    """
+    from ..database.models import InterestAlert
+    
+    should_close = False
+    if db is None:
+        db = SessionLocal()
+        should_close = True
+    
+    try:
+        now = datetime.now(timezone.utc)
+        
+        alert = InterestAlert(
+            owner_id=owner_id,
+            keyword=", ".join(matched_keywords),
+            message=message[:1000] if message else "",
+            source=source,
+            triggered_at=now,
+        )
+        db.add(alert)
+        db.commit()
+        db.refresh(alert)
+        
+        logger.info(
+            f"Interest alert created: id={alert.id}, "
+            f"keywords={matched_keywords}, owner={owner_id}"
+        )
+        
+        return {
+            "triggered": True,
+            "alert_id": alert.id,
+            "owner_id": owner_id,
+            "matched_keywords": matched_keywords,
+            "message": message,
+            "source": source,
+            "triggered_at": now.isoformat(),
+        }
+    except Exception as e:
+        logger.error(f"Failed to create interest alert: {e}")
+        return {"triggered": False, "error": str(e)[:300]}
+    finally:
+        if should_close:
+            db.close()
+
+
+def setup_interest_monitoring(db: Session, owner_id: int) -> List[ScheduledJob]:
+    """
+    Set up proactive monitoring jobs for recurring interests.
+    
+    Creates scheduled jobs for:
+    1) 'coding' interest - periodic checks
+    2) 'bob_project' interest - periodic checks
+    
+    Args:
+        db: Database session
+        owner_id: The owner ID for the monitoring jobs
+        
+    Returns:
+        List of created ScheduledJob instances
+    """
+    created_jobs = []
+    
+    monitoring_jobs = [
+        {
+            "name": "Interest Monitor: Coding",
+            "message": "periodic_coding_check",
+            "interval_seconds": INTEREST_MONITOR_INTERVAL,
+            "lane": "interest_monitoring",
+        },
+        {
+            "name": "Interest Monitor: Bob Project",
+            "message": "periodic_bob_project_check",
+            "interval_seconds": INTEREST_MONITOR_INTERVAL,
+            "lane": "interest_monitoring",
+        },
+    ]
+    
+    for job_config in monitoring_jobs:
+        try:
+            job = create_job(
+                db=db,
+                owner_id=owner_id,
+                name=job_config["name"],
+                message=job_config["message"],
+                interval_seconds=job_config["interval_seconds"],
+                lane=job_config["lane"],
+            )
+            created_jobs.append(job)
+            logger.info(f"Created interest monitoring job: {job.name} (id={job.id})")
+        except Exception as e:
+            logger.error(f"Failed to create monitoring job {job_config['name']}: {e}")
+    
+    return created_jobs
 
 
 def create_job(
@@ -269,6 +424,8 @@ def tool_list_scheduled_jobs(
     db = SessionLocal()
     try:
         jobs = list_jobs(db, owner_id, include_disabled=include_disabled)
+        # Apply limit
+        jobs = jobs[:limit] if limit > 0 else jobs
         return {
             "ok": True,
             "jobs": [
@@ -277,27 +434,15 @@ def tool_list_scheduled_jobs(
                     "name": j.name,
                     "message": j.message,
                     "interval_seconds": j.interval_seconds,
-                    "enabled": bool(j.enabled),
+                    "enabled": j.enabled,
                     "next_run_at": j.next_run_at.isoformat() if j.next_run_at else None,
+                    "last_run_at": j.last_run_at.isoformat() if j.last_run_at else None,
+                    "run_count": j.run_count,
+                    "lane": j.lane,
                 }
-                for j in jobs[:limit]
+                for j in jobs
             ],
-            "count": len(jobs),
         }
-    except Exception as exc:
-        return {"ok": False, "error": str(exc)[:300]}
-    finally:
-        db.close()
-
-
-def tool_disable_scheduled_job(owner_id: int, job_id: int) -> dict:
-    """Disable a scheduled job (LLM-callable wrapper)."""
-    db = SessionLocal()
-    try:
-        ok = disable_job(db, job_id, owner_id)
-        if ok:
-            return {"ok": True, "job_id": job_id, "disabled": True}
-        return {"ok": False, "error": f"Job {job_id} not found or not owned by user"}
     except Exception as exc:
         return {"ok": False, "error": str(exc)[:300]}
     finally:

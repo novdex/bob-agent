@@ -25,6 +25,7 @@ from .commands import (
     cmd_cron,
     handle_message,
     handle_photo_message,
+    handle_voice_message,
 )
 from .runtime import (
     initialize_runtime_state_baseline,
@@ -62,6 +63,8 @@ def _setup_handlers(app: Application):
     app.add_handler(CommandHandler("approvals", cmd_approvals))
     app.add_handler(CommandHandler("cron", cmd_cron))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(MessageHandler(filters.VOICE, handle_voice_message))
+    app.add_handler(MessageHandler(filters.PHOTO, handle_photo_message))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo_message))
 
 
