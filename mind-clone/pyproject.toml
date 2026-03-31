@@ -67,23 +67,21 @@ Repository = "https://github.com/mind-clone/agent"
 [tool.hatch.build.targets.wheel]
 packages = ["src/mind_clone"]
 
-[tool.ruff]
-target-version = "py311"
-line-length = 120
-# Only safe formatting rules — no code rewriting
-select = ["E", "W"]
-# Ignore everything that could rewrite code logic
-ignore = [
-    "E501",  # line too long
-    "E402",  # module level import not at top
-    "E711",  # comparison to None
+# RUFF DISABLED — was destroying code by rewriting files
+# [tool.ruff]
+# target-version = "py311"
+# line-length = 120
+# select = ["E", "W"]
+# ignore = [
+#     "E501",
+#     "E402",
+#     "E711",
     "E712",  # comparison to True/False
-]
-# Never auto-fix — only report
-fix = false
+# ]
+# fix = false
 
-[tool.ruff.lint.pydocstyle]
-convention = "google"
+# [tool.ruff.lint.pydocstyle]
+# convention = "google"
 
 [tool.mypy]
 python_version = "3.11"
