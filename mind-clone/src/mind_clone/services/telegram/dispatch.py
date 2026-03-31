@@ -45,6 +45,9 @@ def run_agent_loop_serialized(owner_id: int, user_message: str) -> str:
         mark_owner_active(owner_id, True)
         try:
             return run_agent_loop_with_new_session(owner_id, user_message)
+        except Exception as e:
+            log.error("AGENT_LOOP_SERIALIZED_ERROR owner=%d: %s", owner_id, str(e)[:200])
+            return f"Sorry, I encountered an error: {str(e)[:100]}"
         finally:
             mark_owner_active(owner_id, False)
 

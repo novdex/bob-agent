@@ -839,6 +839,10 @@ def run_agent_loop(owner_id: int, user_message: str) -> str:
         db = SessionLocal()
         try:
             return run_agent_turn(db, owner_id, user_message)
+        except Exception as e:
+            db.rollback()
+            logger.error("AGENT_LOOP_ERROR owner=%d: %s", owner_id, str(e)[:200])
+            return f"Sorry, I encountered an error: {str(e)[:100]}"
         finally:
             db.close()
 
