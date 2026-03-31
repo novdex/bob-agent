@@ -134,18 +134,24 @@ def select_vision_model() -> str:
     fallback = VISION_FALLBACK_MODEL
     
     try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+        # Try to get the running loop first - if one exists, we can't run
+        # blocking code so just return the primary model
         try:
-            health = loop.run_until_complete(_get_vision_model_health(primary))
-            if health.get("ok", False):
-                return primary
-            
-            fallback_health = loop.run_until_complete(_get_vision_model_health(fallback))
-            if fallback_health.get("ok", False):
-                return fallback
-        finally:
-            loop.close()
+            loop = asyncio.get_running_loop()
+            return primary
+        except RuntimeError:
+            # No running loop, create one for this operation
+            loop = asyncio.new_event_loop()
+            try:
+                health = loop.run_until_complete(_get_vision_model_health(primary))
+                if health.get("ok", False):
+                    return primary
+                
+                fallback_health = loop.run_until_complete(_get_vision_model_health(fallback))
+                if fallback_health.get("ok", False):
+                    return fallback
+            finally:
+                loop.close()
     except Exception:
         pass
     

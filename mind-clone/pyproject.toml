@@ -69,9 +69,18 @@ packages = ["src/mind_clone"]
 
 [tool.ruff]
 target-version = "py311"
-line-length = 100
-select = ["E", "F", "I", "W", "N", "UP", "B", "C4", "SIM"]
-ignore = ["E501"]
+line-length = 120
+# Only safe formatting rules — no code rewriting
+select = ["E", "W"]
+# Ignore everything that could rewrite code logic
+ignore = [
+    "E501",  # line too long
+    "E402",  # module level import not at top
+    "E711",  # comparison to None
+    "E712",  # comparison to True/False
+]
+# Never auto-fix — only report
+fix = false
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

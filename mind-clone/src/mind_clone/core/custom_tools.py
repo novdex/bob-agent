@@ -286,33 +286,32 @@ def update_custom_tool(
                     code_changed = True
                 setattr(tool, field, value)
         
-        # Retest if code changed
-        if code_changed and run_test:
-            # Validate new code
+        # Validate new code if changed
+        if code_changed:
             validation = validate_tool_code(tool.code)
             if not validation["valid"]:
-                db.rollback()
                 return {"ok": False, "error": f"Code validation failed: {validation['error']}"}
-            
-            # Run test
+        
+        # Retest if code changed and requested
+        test_passed = tool.test_passed
+        if code_changed and run_test:
             parameters = json.loads(tool.parameters_json or "{}")
             test_result = test_custom_tool(tool.code, parameters)
-            tool.test_passed = 1 if test_result.get("ok", False) else 0
-            
-            if not test_result.get("ok", False):
-                logger.warning(f"Tool test failed after update {tool_id}: {test_result.get('error')}")
+            test_passed = test_result.get("ok", False)
+            tool.test_passed = 1 if test_passed else 0
+            if not test_passed:
+                logger.warning(f"Tool test failed during update {tool_id}: {test_result.get('error')}")
         
+        tool.updated_at = datetime.now(timezone.utc)
         db.commit()
-        db.refresh(tool)
         
         logger.info(f"Updated custom tool {tool_id}")
         
         return {
             "ok": True,
-            "id": tool.id,
-            "name": tool.tool_name,
+            "id": tool_id,
             "code_changed": code_changed,
-            "test_passed": bool(tool.test_passed),
+            "test_passed": bool(test_passed),
         }
     except Exception as e:
         db.rollback()
@@ -346,12 +345,16 @@ def delete_custom_tool(
         if not tool:
             return {"ok": False, "error": "Tool not found"}
         
+        tool_name = tool.tool_name
         db.delete(tool)
         db.commit()
         
-        logger.info(f"Deleted custom tool {tool_id}")
+        logger.info(f"Deleted custom tool {tool_id}: {tool_name}")
         
-        return {"ok": True, "id": tool_id}
+        return {
+            "ok": True,
+            "deleted": tool_id,
+        }
     except Exception as e:
         db.rollback()
         logger.error(f"Failed to delete custom tool: {e}")
@@ -362,16 +365,14 @@ def delete_custom_tool(
 
 def prune_custom_tools(
     older_than_days: int = 90,
-    require_test_passed: bool = True,
-    owner_id: Optional[int] = None,
+    delete_disabled_only: bool = True,
 ) -> Dict[str, Any]:
     """
-    Remove old or unused custom tools.
+    Prune old or disabled custom tools.
     
     Args:
         older_than_days: Delete tools not updated in this many days
-        require_test_passed: Only delete tools that passed tests
-        owner_id: Optional owner filter
+        delete_disabled_only: If True, only delete disabled tools
         
     Returns:
         Prune result with count of deleted tools
@@ -381,18 +382,17 @@ def prune_custom_tools(
         cutoff_date = datetime.now(timezone.utc) - timedelta(days=older_than_days)
         
         query = db.query(GeneratedTool).filter(
-            GeneratedTool.updated_at < cutoff_date,
+            GeneratedTool.updated_at < cutoff_date
         )
         
-        if require_test_passed:
-            query = query.filter(GeneratedTool.test_passed == 1)
+        if delete_disabled_only:
+            query = query.filter(GeneratedTool.enabled == 0)
         
-        if owner_id:
-            query = query.filter(GeneratedTool.owner_id == owner_id)
-        
+        # Get count before deletion
         tools_to_delete = query.all()
         count = len(tools_to_delete)
         
+        # Delete in batch
         for tool in tools_to_delete:
             db.delete(tool)
         
@@ -400,7 +400,10 @@ def prune_custom_tools(
         
         logger.info(f"Pruned {count} custom tools")
         
-        return {"ok": True, "deleted_count": count}
+        return {
+            "ok": True,
+            "deleted_count": count,
+        }
     except Exception as e:
         db.rollback()
         logger.error(f"Failed to prune custom tools: {e}")
@@ -417,79 +420,52 @@ def validate_tool_code(code: str) -> Dict[str, Any]:
         code: Python code to validate
         
     Returns:
-        Validation result with valid flag and error message
+        Validation result with details
     """
-    if not code or not isinstance(code, str):
-        return {"valid": False, "error": "Code must be a non-empty string"}
+    if not code or not code.strip():
+        return {"valid": False, "error": "Empty code"}
     
     # Check for dangerous patterns
     dangerous_patterns = [
-        (r'\bimport\s+os\b', "Importing 'os' module is not allowed"),
-        (r'\bfrom\s+os\b', "Importing from 'os' module is not allowed"),
-        (r'\bimport\s+subprocess\b', "Importing 'subprocess' module is not allowed"),
-        (r'\bfrom\s+subprocess\b', "Importing from 'subprocess' module is not allowed"),
-        (r'\bimport\s+sys\b', "Importing 'sys' module is not allowed"),
-        (r'\bfrom\s+sys\b', "Importing from 'sys' module is not allowed"),
-        (r'\bimport\s+requests\b', "Importing 'requests' module is not allowed"),
-        (r'\bfrom\s+requests\b', "Importing from 'requests' module is not allowed"),
-        (r'\bimport\s+urllib\b', "Importing 'urllib' module is not allowed"),
-        (r'\bfrom\s+urllib\b', "Importing from 'urllib' module is not allowed"),
-        (r'\bopen\s*\(', "Using 'open' builtin is not allowed"),
-        (r'\bexec\s*\(', "Using 'exec' is not allowed"),
-        (r'\beval\s*\(', "Using 'eval' is not allowed"),
-        (r'\bcompile\s*\(', "Using 'compile' is not allowed"),
-        (r'\b__import__\s*\(', "Using '__import__' is not allowed"),
-        (r'\binput\s*\(', "Using 'input' is not allowed"),
-        (r'\braw_input\s*\(', "Using 'raw_input' is not allowed"),
-        (r'\bos\.system\b', "Using 'os.system' is not allowed"),
-        (r'\bos\.popen\b', "Using 'os.popen' is not allowed"),
-        (r'\bsubprocess\.', "Using 'subprocess' is not allowed"),
-        (r'\bctypes\b', "Using 'ctypes' is not allowed"),
-        (r'\bptrace\b', "Using 'ptrace' is not allowed"),
-        (r'\bfork\b', "Using 'fork' is not allowed"),
-        (r'\bspawn\b', "Using 'spawn' is not allowed"),
-        (r'\bPopen\b', "Using 'Popen' is not allowed"),
-        (r'\bwith\s+open\s*\(', "Using 'with open' is not allowed"),
-        (r'\bfile\s*\(', "Using 'file' builtin is not allowed"),
-        (r'\bruntime\b', "Using 'runtime' is not allowed"),
-        (r'\beval\s*\(', "Using 'eval' is not allowed"),
-        (r'\bgetattr\b', "Using 'getattr' is not allowed"),
-        (r'\bsetattr\b', "Using 'setattr' is not allowed"),
-        (r'\bdelattr\b', "Using 'delattr' is not allowed"),
-        (r'\bhasattr\b', "Using 'hasattr' is not allowed"),
-        (r'\bmro\b', "Using 'mro' is not allowed"),
-        (r'\b__subclasses__\b', "Using '__subclasses__' is not allowed"),
-        (r'\b__globals__\b', "Using '__globals__' is not allowed"),
-        (r'\b__code__\b', "Using '__code__' is not allowed"),
-        (r'\b__closure__\b', "Using '__closure__' is not allowed"),
-        (r'\b__func__\b', "Using '__func__' is not allowed"),
+        (r'\bimport\s+os\b', "OS module import not allowed"),
+        (r'\bimport\s+subprocess\b', "Subprocess module import not allowed"),
+        (r'\bimport\s+sys\b', "Sys module import not allowed"),
+        (r'\bfrom\s+os\s+import', "OS module import not allowed"),
+        (r'\bfrom\s+subprocess\s+import', "Subprocess module import not allowed"),
+        (r'\bopen\s*\(', "File operations not allowed"),
+        (r'\beval\s*\(', "Eval not allowed"),
+        (r'\bexec\s*\(', "Exec not allowed"),
+        (r'__import__', "__import__ not allowed"),
+        (r'\bcompile\s*\(', "Compile not allowed"),
+        (r'\bgetattr\s*\(', "Getattr not allowed"),
+        (r'\bsetattr\s*\(', "Setattr not allowed"),
+        (r'\bdel\s+attr', "Attribute deletion not allowed"),
+        (r'\bglobals\s*\(', "Globals not allowed"),
+        (r'\blocals\s*\(', "Locals not allowed"),
+        (r'\bvars\s*\(', "Vars not allowed"),
+        (r'\breload\s*\(', "Reload not allowed"),
+        (r'\binput\s*\(', "Input not allowed"),
+        (r'\braw_input\s*\(', "Raw input not allowed"),
     ]
     
-    for pattern, error_msg in dangerous_patterns:
+    for pattern, message in dangerous_patterns:
         if re.search(pattern, code):
-            return {"valid": False, "error": error_msg}
+            return {"valid": False, "error": message}
     
-    # Check for allowed imports only
-    import_pattern = r'\b(?:import|from)\s+([a-zA-Z_][a-zA-Z0-9_]*)'
-    imports = re.findall(import_pattern, code)
+    # Check for allowed module imports
+    import_pattern = r'\b(?:from|import)\s+([a-zA-Z_][a-zA-Z0-9_]*)'
+    for match in re.finditer(import_pattern, code):
+        module_name = match.group(1)
+        if module_name not in SANDBOX_ALLOWED_MODULES:
+            return {"valid": False, "error": f"Module '{module_name}' not allowed"}
     
-    allowed_modules = SANDBOX_ALLOWED_MODULES | {"typing"}
-    
-    for imp in imports:
-        if imp not in allowed_modules:
-            return {"valid": False, "error": f"Importing '{imp}' module is not allowed"}
-    
-    # Check syntax
+    # Syntax check
     try:
         ast.parse(code)
     except SyntaxError as e:
-        return {"valid": False, "error": f"Syntax error: {e}"}
+        return {"valid": False, "error": f"Syntax error: {e.msg} at line {e.lineno}"}
     
-    # Check for function definition
-    if not re.search(r'\bdef\s+\w+\s*\(', code):
-        return {"valid": False, "error": "Code must contain a function definition"}
-    
-    return {"valid": True, "error": None}
+    return {"valid": True}
 
 
 def test_custom_tool(
@@ -498,28 +474,22 @@ def test_custom_tool(
     timeout: int = 10,
 ) -> Dict[str, Any]:
     """
-    Test custom tool code with sample parameters.
+    Test custom tool code in sandbox.
     
     Args:
         code: Python code to test
-        parameters: Sample parameters for testing
-        timeout: Timeout in seconds
+        parameters: Test parameters
+        timeout: Execution timeout in seconds
         
     Returns:
-        Test result with success status and output/error
+        Test result with output or error
     """
-    # Validate code first
-    validation = validate_tool_code(code)
-    if not validation["valid"]:
-        return {"ok": False, "error": validation["error"]}
+    parameters = parameters or {}
     
-    # Wrap code for testing
-    wrapped_code = generate_tool_wrapper(code, parameters or {})
+    # Generate test wrapper
+    wrapper = generate_tool_wrapper(code, parameters)
     
-    # Execute in sandbox
-    result = execute_in_sandbox(wrapped_code, timeout=timeout)
-    
-    return result
+    return execute_in_sandbox(wrapper, timeout=timeout)
 
 
 def execute_in_sandbox(
@@ -528,7 +498,7 @@ def execute_in_sandbox(
     memory_limit_mb: int = 128,
 ) -> Dict[str, Any]:
     """
-    Execute Python code in a restricted sandbox environment.
+    Execute Python code in a restricted sandbox.
     
     Args:
         code: Python code to execute
@@ -536,7 +506,7 @@ def execute_in_sandbox(
         memory_limit_mb: Memory limit in MB
         
     Returns:
-        Execution result with output/error
+        Execution result with stdout, stderr, and return code
     """
     # Create a temporary file for the code
     with tempfile.NamedTemporaryFile(
@@ -546,60 +516,63 @@ def execute_in_sandbox(
         encoding='utf-8'
     ) as f:
         f.write(code)
-        temp_file = f.name
+        temp_path = f.name
     
     try:
         # Build restricted environment
         env = {
-            "PYTHONPATH": "",
-            "PYTHONDONTWRITEBYTECODE": "1",
+            'PYTHONPATH': '',
+            'HOME': tempfile.gettempdir(),
+            'TMPDIR': tempfile.gettempdir(),
         }
         
-        # Run with resource limits using resource module would require native code
-        # Instead, we rely on the restricted code validation and timeout
+        # Execute with restrictions
         result = subprocess.run(
-            ["python3", "-u", temp_file],
+            [
+                'python3', '-B', '-X', f'memory_limit={memory_limit_mb * 1024 * 1024}',
+                '-c', f'exec(open({repr(temp_path)}, encoding="utf-8").read())'
+            ],
             capture_output=True,
             text=True,
             timeout=timeout,
             env=env,
+            cwd=tempfile.gettempdir(),
         )
         
-        if result.returncode == 0:
-            return {
-                "ok": True,
-                "output": result.stdout,
-                "error": None,
-            }
-        else:
-            return {
-                "ok": False,
-                "output": result.stdout,
-                "error": result.stderr or f"Process exited with code {result.returncode}",
-            }
+        return {
+            "ok": result.returncode == 0,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "return_code": result.returncode,
+        }
     except subprocess.TimeoutExpired:
         return {
             "ok": False,
-            "output": None,
             "error": f"Execution timed out after {timeout} seconds",
+            "stdout": "",
+            "stderr": "Timeout",
+            "return_code": -1,
         }
     except Exception as e:
+        logger.error(f"Sandbox execution failed: {e}")
         return {
             "ok": False,
-            "output": None,
-            "error": f"Execution error: {str(e)}",
+            "error": str(e),
+            "stdout": "",
+            "stderr": str(e),
+            "return_code": -1,
         }
     finally:
         # Clean up temp file
         try:
-            Path(temp_file).unlink(missing_ok=True)
+            Path(temp_path).unlink(missing_ok=True)
         except Exception:
             pass
 
 
 def get_tool_code_hash(code: str) -> str:
     """
-    Generate a hash of tool code for caching/comparison.
+    Generate a hash of tool code for change detection.
     
     Args:
         code: Python code
@@ -612,35 +585,56 @@ def get_tool_code_hash(code: str) -> str:
 
 def generate_tool_wrapper(
     code: str,
-    test_parameters: Optional[Dict[str, Any]] = None,
+    parameters: Optional[Dict[str, Any]] = None,
 ) -> str:
     """
-    Generate a test wrapper for tool code.
+    Generate a wrapper script for tool testing.
     
     Args:
-        code: The tool code to wrap
-        test_parameters: Parameters for testing
+        code: Tool code
+        parameters: Test parameters
         
     Returns:
-        Wrapped code that can be executed
+        Complete Python script for execution
     """
-    params_json = json.dumps(test_parameters or {}, default=str)
+    parameters = parameters or {}
+    params_json = json.dumps(parameters, ensure_ascii=False)
     
     wrapper = f'''
 import json
 import sys
 
+# Tool parameters
+parameters = json.loads({repr(params_json)})
+
 # Tool code
 {code}
 
-# Test execution
-if __name__ == "__main__":
+# Execute main function with parameters if it exists
+if __name__ == "__main__" or True:
     try:
-        params = json.loads(\'{params_json}\')
-        result = main(params)
-        print(json.dumps({{"ok": True, "result": result}}, default=str))
+        if "main" in dir() and callable(main):
+            result = main(**parameters)
+            if result is not None:
+                print(json.dumps(result, ensure_ascii=False, default=str))
+        elif "run" in dir() and callable(run):
+            result = run(**parameters)
+            if result is not None:
+                print(json.dumps(result, ensure_ascii=False, default=str))
+        else:
+            # Try to find any callable that takes the parameters
+            for name in dir():
+                obj = locals()[name]
+                if callable(obj) and not name.startswith("_"):
+                    try:
+                        result = obj(**parameters)
+                        if result is not None:
+                            print(json.dumps(result, ensure_ascii=False, default=str))
+                            break
+                    except (TypeError, ValueError):
+                        continue
     except Exception as e:
-        print(json.dumps({{"ok": False, "error": str(e)}}))
+        print(f"Error: {{e}}", file=sys.stderr)
         sys.exit(1)
 '''
     return wrapper

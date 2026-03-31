@@ -232,17 +232,15 @@ class LLMClient:
 
         url = f"{self.config.base_url}/chat/completions"
 
-        # Check health of primary model first
+        model = primary_model
         if not self.check_vision_health(primary_model):
             logger.warning(
                 "Primary vision model %s is not healthy, using fallback %s",
                 primary_model, fallback_model
             )
-            model_to_use = fallback_model
-        else:
-            model_to_use = primary_model
+            model = fallback_model
 
-        payload = {"model": model_to_use, **payload_base, "messages": all_messages}
+        payload = {"model": model, "messages": all_messages, **payload_base}
 
         start = time.time()
         try:
@@ -253,50 +251,16 @@ class LLMClient:
                 error_body = resp.text[:500]
                 logger.error(
                     "Vision LLM API error %d for model %s: %s",
-                    resp.status_code, model_to_use, error_body
+                    resp.status_code, model, error_body
                 )
-                
-                # If primary failed and we haven't tried fallback yet
-                if model_to_use == primary_model:
-                    logger.info("Primary vision model failed, trying fallback: %s", fallback_model)
-                    payload["model"] = fallback_model
-                    try:
-                        resp = self._session.post(url, json=payload, timeout=120)
-                        if resp.status_code != 200:
-                            error_body = resp.text[:500]
-                            logger.error(
-                                "Vision LLM API error %d for fallback model %s: %s",
-                                resp.status_code, fallback_model, error_body
-                            )
-                            return {
-                                "content": "",
-                                "reasoning": "",
-                                "tokens": 0,
-                                "ok": False,
-                                "error": f"Both primary and fallback models failed. API error {resp.status_code}: {error_body}",
-                                "model": fallback_model,
-                            }
-                        else:
-                            model_to_use = fallback_model
-                    except Exception as e:
-                        logger.error("Fallback vision model also failed: %s", e)
-                        return {
-                            "content": "",
-                            "reasoning": "",
-                            "tokens": 0,
-                            "ok": False,
-                            "error": f"Both primary and fallback models failed: {str(e)}",
-                            "model": fallback_model,
-                        }
-                else:
-                    return {
-                        "content": "",
-                        "reasoning": "",
-                        "tokens": 0,
-                        "ok": False,
-                        "error": f"API error {resp.status_code}: {error_body}",
-                        "model": model_to_use,
-                    }
+                return {
+                    "content": "",
+                    "reasoning": "",
+                    "tokens": 0,
+                    "ok": False,
+                    "error": f"API error {resp.status_code}: {error_body}",
+                    "model": model,
+                }
 
             data = resp.json()
             choice = data.get("choices", [{}])[0]
@@ -311,7 +275,7 @@ class LLMClient:
 
             logger.info(
                 "Vision LLM call #%d: %d tokens, %.1fs, model=%s",
-                self._call_count, tokens, elapsed, model_to_use,
+                self._call_count, tokens, elapsed, model,
             )
 
             return {
@@ -320,26 +284,29 @@ class LLMClient:
                 "tokens": tokens,
                 "ok": True,
                 "error": "",
-                "model": model_to_use,
+                "model": model,
             }
 
         except requests.Timeout:
-            logger.error("Vision LLM API timeout after %.1fs", time.time() - start)
+            logger.error(
+                "Vision LLM API timeout after %.1fs for model %s",
+                time.time() - start, model
+            )
             return {
                 "content": "",
                 "reasoning": "",
                 "tokens": 0,
                 "ok": False,
                 "error": "API request timed out",
-                "model": model_to_use,
+                "model": model,
             }
         except Exception as e:
-            logger.error("Vision LLM API exception: %s", e)
+            logger.error("Vision LLM API exception for model %s: %s", model, e)
             return {
                 "content": "",
                 "reasoning": "",
                 "tokens": 0,
                 "ok": False,
                 "error": str(e),
-                "model": model_to_use,
+                "model": model,
             }
