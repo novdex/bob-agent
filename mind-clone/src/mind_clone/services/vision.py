@@ -20,7 +20,7 @@ import httpx
 logger = logging.getLogger("mind_clone.services.vision")
 
 _OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
-_VISION_MODEL = "xiaomi/mimo-v2-pro"
+_VISION_MODEL = "openai/gpt-5.4-nano"
 _MAX_IMAGE_BYTES = 10 * 1024 * 1024  # 10 MB safety limit
 
 
