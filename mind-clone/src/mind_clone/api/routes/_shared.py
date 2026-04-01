@@ -10,20 +10,33 @@
 #
 
 from .shared import *  # noqa: F401,F403
-from .shared import (  # explicit re-exports for type checkers
+from .shared import (  # explicit re-exports for underscore-prefixed names (star import skips these)
     _env_flag,
     _candidate_node_scores,
-    _count_workflow_actions,
-    _ensure_team_agent_owner,
-    _normalize_capability_list,
     _refresh_node_runtime_metrics,
-    _resolve_identity_owner,
+    _normalize_capability_list,
+    _validate_checkpoint_replay_state,
     _safe_json_dict,
     _safe_json_list,
+    _resolve_identity_owner,
+    _ensure_team_agent_owner,
+    _get_team_agent_row,
     _upsert_identity_link,
-    _validate_checkpoint_replay_state,
-    _workflow_eval_condition,
+    _refresh_approval_pending_runtime_count,
+    _ops_auth_fail,
+    _extract_ops_token,
+    _ops_signature_secret,
+    _ops_signature_payload,
+    _verify_ops_signature,
+    _compile_workflow_step,
+    _count_workflow_actions,
     _workflow_render_template,
+    _workflow_eval_condition,
+    _vault_owner_dir,
+    _vault_git_run,
+    _build_memory_export_payload,
+)
+from .shared import (  # explicit re-exports for type checkers
     app_lifespan,
     get_db,
     require_ops_auth,

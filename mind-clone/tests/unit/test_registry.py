@@ -177,45 +177,45 @@ class TestSelectToolsForIntent:
 
 class TestExecuteTool:
 
-    @patch("mind_clone.tools.registry.TOOL_DISPATCH", {"test_tool": lambda args: {"ok": True, "result": "hello"}})
-    @patch("mind_clone.tools.registry.CUSTOM_TOOL_REGISTRY", {})
+    @patch("mind_clone.tools.registry.dispatch.TOOL_DISPATCH", {"test_tool": lambda args: {"ok": True, "result": "hello"}})
+    @patch("mind_clone.tools.registry.dispatch.CUSTOM_TOOL_REGISTRY", {})
     def test_dispatches_to_registered_tool(self):
         result = execute_tool("test_tool", {})
         assert result["ok"] is True
         assert result["result"] == "hello"
 
-    @patch("mind_clone.tools.registry.CUSTOM_TOOL_REGISTRY", {})
+    @patch("mind_clone.tools.registry.dispatch.CUSTOM_TOOL_REGISTRY", {})
     def test_unknown_tool_returns_error(self):
         result = execute_tool("nonexistent_tool_xyz", {})
         assert result["ok"] is False
         assert "error" in result
 
-    @patch("mind_clone.tools.registry.TOOL_DISPATCH", {"crash_tool": MagicMock(side_effect=Exception("boom"))})
-    @patch("mind_clone.tools.registry.CUSTOM_TOOL_REGISTRY", {})
+    @patch("mind_clone.tools.registry.dispatch.TOOL_DISPATCH", {"crash_tool": MagicMock(side_effect=Exception("boom"))})
+    @patch("mind_clone.tools.registry.dispatch.CUSTOM_TOOL_REGISTRY", {})
     def test_exception_returns_error(self):
         result = execute_tool("crash_tool", {})
         assert result["ok"] is False
         assert "boom" in result.get("error", "")
 
-    @patch("mind_clone.tools.registry.CUSTOM_TOOL_REGISTRY", {})
+    @patch("mind_clone.tools.registry.dispatch.CUSTOM_TOOL_REGISTRY", {})
     def test_empty_tool_name_returns_error(self):
         result = execute_tool("", {})
         assert result["ok"] is False
         assert "tool_name" in result.get("error", "").lower()
 
-    @patch("mind_clone.tools.registry.CUSTOM_TOOL_REGISTRY", {})
+    @patch("mind_clone.tools.registry.dispatch.CUSTOM_TOOL_REGISTRY", {})
     def test_none_tool_name_returns_error(self):
         result = execute_tool(None, {})
         assert result["ok"] is False
         assert "tool_name" in result.get("error", "").lower()
 
-    @patch("mind_clone.tools.registry.CUSTOM_TOOL_REGISTRY", {})
+    @patch("mind_clone.tools.registry.dispatch.CUSTOM_TOOL_REGISTRY", {})
     def test_non_dict_args_returns_error(self):
         result = execute_tool("search_web", "not a dict")
         assert result["ok"] is False
         assert "dict" in result.get("error", "").lower()
 
-    @patch("mind_clone.tools.registry.CUSTOM_TOOL_REGISTRY", {})
+    @patch("mind_clone.tools.registry.dispatch.CUSTOM_TOOL_REGISTRY", {})
     def test_whitespace_only_tool_name_returns_error(self):
         result = execute_tool("   ", {})
         assert result["ok"] is False
@@ -291,7 +291,7 @@ class TestCreateCustomToolExecutor:
 def tool_main(args):
     return {"ok": True, "result": sum([1, 2, 3])}
 """
-        with patch("mind_clone.tools.registry.settings.custom_tool_trust_mode", "full"):
+        with patch("mind_clone.tools.registry.definitions.settings.custom_tool_trust_mode", "full"):
             func = _create_custom_tool_executor(code)
             assert callable(func)
             result = func({})
@@ -306,7 +306,7 @@ def tool_main(args):
 def tool_main(args):
     return {"ok": True, "result": len([1, 2, 3])}
 """
-        with patch("mind_clone.tools.registry.settings.custom_tool_trust_mode", "safe"):
+        with patch("mind_clone.tools.registry.definitions.settings.custom_tool_trust_mode", "safe"):
             func = _create_custom_tool_executor(code)
             assert callable(func)
             result = func({})
@@ -320,7 +320,7 @@ def tool_main(args):
         code = """
 tool_main = 42  # Not callable
 """
-        with patch("mind_clone.tools.registry.settings.custom_tool_trust_mode", "full"):
+        with patch("mind_clone.tools.registry.definitions.settings.custom_tool_trust_mode", "full"):
             with pytest.raises(ValueError, match="not callable"):
                 _create_custom_tool_executor(code)
 
@@ -332,7 +332,7 @@ tool_main = 42  # Not callable
 def tool_main(args):
     return {"ok": True}
 """
-        with patch("mind_clone.tools.registry.settings.custom_tool_trust_mode", "full"):
+        with patch("mind_clone.tools.registry.definitions.settings.custom_tool_trust_mode", "full"):
             func = _create_custom_tool_executor(code)
             assert callable(func)
             assert func({})["ok"] is True
@@ -341,7 +341,7 @@ def tool_main(args):
 class TestLoadCustomToolsFromDB:
     """Test load_custom_tools_from_db with mocks."""
 
-    @patch("mind_clone.tools.registry.settings.custom_tool_enabled", False)
+    @patch("mind_clone.tools.registry.custom.settings.custom_tool_enabled", False)
     def test_returns_0_when_disabled(self):
         """load_custom_tools_from_db returns 0 when disabled."""
         from mind_clone.tools.registry import load_custom_tools_from_db
@@ -349,7 +349,7 @@ class TestLoadCustomToolsFromDB:
         result = load_custom_tools_from_db()
         assert result == 0
 
-    @patch("mind_clone.tools.registry.settings.custom_tool_enabled", True)
+    @patch("mind_clone.tools.registry.custom.settings.custom_tool_enabled", True)
     @patch("mind_clone.database.session.SessionLocal")
     @patch("mind_clone.core.state.set_runtime_state_value")
     def test_loads_enabled_and_tested_tools(self, mock_set_state, mock_session_local):
@@ -370,14 +370,14 @@ class TestLoadCustomToolsFromDB:
         mock_db.query.return_value = mock_query
         mock_query.filter.return_value.all.return_value = [mock_tool]
 
-        with patch("mind_clone.tools.registry._create_custom_tool_executor") as mock_create:
+        with patch("mind_clone.tools.registry.definitions._create_custom_tool_executor") as mock_create:
             mock_func = MagicMock()
             mock_create.return_value = mock_func
 
             result = load_custom_tools_from_db()
             assert result >= 0  # Should return a count
 
-    @patch("mind_clone.tools.registry.settings.custom_tool_enabled", True)
+    @patch("mind_clone.tools.registry.custom.settings.custom_tool_enabled", True)
     @patch("mind_clone.database.session.SessionLocal")
     @patch("mind_clone.core.state.set_runtime_state_value")
     def test_returns_correct_loaded_count(self, mock_set_state, mock_session_local):
@@ -401,7 +401,7 @@ class TestLoadCustomToolsFromDB:
         mock_db.query.return_value = mock_query
         mock_query.filter.return_value.all.return_value = tools
 
-        with patch("mind_clone.tools.registry._create_custom_tool_executor") as mock_create:
+        with patch("mind_clone.tools.registry.definitions._create_custom_tool_executor") as mock_create:
             mock_func = MagicMock()
             mock_create.return_value = mock_func
 
@@ -412,7 +412,7 @@ class TestLoadCustomToolsFromDB:
 class TestCustomToolDefinitions:
     """Test custom_tool_definitions function."""
 
-    @patch("mind_clone.tools.registry.CUSTOM_TOOL_REGISTRY", {})
+    @patch("mind_clone.tools.registry.custom.CUSTOM_TOOL_REGISTRY", {})
     def test_returns_empty_when_no_tools(self):
         """custom_tool_definitions returns empty list when no tools loaded."""
         from mind_clone.tools.registry import custom_tool_definitions
@@ -420,7 +420,7 @@ class TestCustomToolDefinitions:
         result = custom_tool_definitions()
         assert result == []
 
-    @patch("mind_clone.tools.registry.CUSTOM_TOOL_REGISTRY", {
+    @patch("mind_clone.tools.registry.custom.CUSTOM_TOOL_REGISTRY", {
         "test_tool": {
             "definition": {
                 "type": "function",
@@ -444,8 +444,8 @@ class TestCustomToolDefinitions:
 class TestEffectiveToolDefinitions:
     """Test effective_tool_definitions function."""
 
-    @patch("mind_clone.tools.registry.settings.custom_tool_enabled", False)
-    @patch("mind_clone.tools.registry.CUSTOM_TOOL_REGISTRY", {})
+    @patch("mind_clone.tools.registry.definitions.settings.custom_tool_enabled", False)
+    @patch("mind_clone.tools.registry.custom.CUSTOM_TOOL_REGISTRY", {})
     def test_returns_base_defs_when_custom_disabled(self):
         """effective_tool_definitions returns only base defs when custom disabled."""
         from mind_clone.tools.registry import effective_tool_definitions
@@ -454,8 +454,8 @@ class TestEffectiveToolDefinitions:
         assert isinstance(result, list)
         assert len(result) > 0
 
-    @patch("mind_clone.tools.registry.settings.custom_tool_enabled", True)
-    @patch("mind_clone.tools.registry.CUSTOM_TOOL_REGISTRY", {})
+    @patch("mind_clone.tools.registry.definitions.settings.custom_tool_enabled", True)
+    @patch("mind_clone.tools.registry.custom.CUSTOM_TOOL_REGISTRY", {})
     def test_returns_base_defs_when_no_custom_tools(self):
         """effective_tool_definitions returns only base defs when no custom tools."""
         from mind_clone.tools.registry import effective_tool_definitions
@@ -574,7 +574,7 @@ class TestRecordCustomToolError:
 class TestValidateRegistryMutations:
     """Test mutations in validate_registry function."""
 
-    @patch("mind_clone.tools.registry.TOOL_DISPATCH", {"test": lambda x: x})
+    @patch("mind_clone.tools.registry.dispatch.TOOL_DISPATCH", {"test": lambda x: x})
     def test_validate_registry_all_callable(self):
         """validate_registry returns True when all tools callable."""
         from mind_clone.tools.registry import validate_registry
@@ -582,7 +582,7 @@ class TestValidateRegistryMutations:
         result = validate_registry()
         assert result is True
 
-    @patch("mind_clone.tools.registry.TOOL_DISPATCH", {"test": "not_callable"})
+    @patch("mind_clone.tools.registry.dispatch.TOOL_DISPATCH", {"test": "not_callable"})
     def test_validate_registry_detects_non_callable(self):
         """validate_registry returns False when a tool is not callable."""
         from mind_clone.tools.registry import validate_registry
@@ -637,8 +637,8 @@ class TestLoadPluginToolsRegistry:
 class TestExecuteToolReturnValues:
     """Test execute_tool return values with mocks."""
 
-    @patch("mind_clone.tools.registry.TOOL_DISPATCH", {"test_tool": lambda args: {"ok": True, "result": "success"}})
-    @patch("mind_clone.tools.registry.CUSTOM_TOOL_REGISTRY", {})
+    @patch("mind_clone.tools.registry.dispatch.TOOL_DISPATCH", {"test_tool": lambda args: {"ok": True, "result": "success"}})
+    @patch("mind_clone.tools.registry.dispatch.CUSTOM_TOOL_REGISTRY", {})
     def test_execute_tool_returns_result_from_handler(self):
         """execute_tool returns result from handler."""
         from mind_clone.tools.registry import execute_tool
@@ -647,8 +647,8 @@ class TestExecuteToolReturnValues:
         assert result["ok"] is True
         assert result["result"] == "success"
 
-    @patch("mind_clone.tools.registry.TOOL_DISPATCH", {"crash_tool": MagicMock(side_effect=Exception("error"))})
-    @patch("mind_clone.tools.registry.CUSTOM_TOOL_REGISTRY", {})
+    @patch("mind_clone.tools.registry.dispatch.TOOL_DISPATCH", {"crash_tool": MagicMock(side_effect=Exception("error"))})
+    @patch("mind_clone.tools.registry.dispatch.CUSTOM_TOOL_REGISTRY", {})
     def test_execute_tool_returns_error_dict_on_exception(self):
         """execute_tool returns error dict when exception occurs."""
         from mind_clone.tools.registry import execute_tool
@@ -670,12 +670,12 @@ def tool_main(args):
     return {"ok": True}
 """
         # In full mode, should have full builtins
-        with patch("mind_clone.tools.registry.settings.custom_tool_trust_mode", "full"):
+        with patch("mind_clone.tools.registry.definitions.settings.custom_tool_trust_mode", "full"):
             func = _create_custom_tool_executor(code)
             assert callable(func)
 
         # In safe mode, should have restricted builtins
-        with patch("mind_clone.tools.registry.settings.custom_tool_trust_mode", "safe"):
+        with patch("mind_clone.tools.registry.definitions.settings.custom_tool_trust_mode", "safe"):
             func = _create_custom_tool_executor(code)
             assert callable(func)
 
@@ -687,8 +687,8 @@ def tool_main(args):
 class TestCustomToolExecuteReturnValues:
     """Kill mutations on execute_tool return values for custom tool paths (L562, L566)."""
 
-    @patch("mind_clone.tools.registry.CUSTOM_TOOL_REGISTRY")
-    @patch("mind_clone.tools.registry._increment_custom_tool_usage")
+    @patch("mind_clone.tools.registry.dispatch.CUSTOM_TOOL_REGISTRY")
+    @patch("mind_clone.tools.registry.dispatch._increment_custom_tool_usage")
     def test_custom_tool_success_returns_exact_result(self, mock_inc, mock_reg):
         """L562: return result — must return the EXACT value from the custom func, not None."""
         sentinel = {"ok": True, "data": "specific_value_42"}
@@ -699,8 +699,8 @@ class TestCustomToolExecuteReturnValues:
         result = execute_tool("my_custom", {"x": 1})
         assert result is sentinel, "execute_tool must return the exact object from custom func"
 
-    @patch("mind_clone.tools.registry.CUSTOM_TOOL_REGISTRY")
-    @patch("mind_clone.tools.registry._increment_custom_tool_usage")
+    @patch("mind_clone.tools.registry.dispatch.CUSTOM_TOOL_REGISTRY")
+    @patch("mind_clone.tools.registry.dispatch._increment_custom_tool_usage")
     def test_custom_tool_success_not_none(self, mock_inc, mock_reg):
         """L562: mutant returns None — verify result is not None."""
         mock_func = MagicMock(return_value={"ok": True})
@@ -710,8 +710,8 @@ class TestCustomToolExecuteReturnValues:
         result = execute_tool("my_custom", {})
         assert result is not None
 
-    @patch("mind_clone.tools.registry.CUSTOM_TOOL_REGISTRY")
-    @patch("mind_clone.tools.registry._record_custom_tool_error")
+    @patch("mind_clone.tools.registry.dispatch.CUSTOM_TOOL_REGISTRY")
+    @patch("mind_clone.tools.registry.dispatch._record_custom_tool_error")
     def test_custom_tool_error_returns_error_dict(self, mock_rec, mock_reg):
         """L566: return error dict — must return dict with ok=False and error string."""
         mock_func = MagicMock(side_effect=ValueError("boom"))
@@ -723,8 +723,8 @@ class TestCustomToolExecuteReturnValues:
         assert result["ok"] is False
         assert "boom" in result["error"]
 
-    @patch("mind_clone.tools.registry.CUSTOM_TOOL_REGISTRY")
-    @patch("mind_clone.tools.registry._record_custom_tool_error")
+    @patch("mind_clone.tools.registry.dispatch.CUSTOM_TOOL_REGISTRY")
+    @patch("mind_clone.tools.registry.dispatch._record_custom_tool_error")
     def test_custom_tool_error_contains_exception_message(self, mock_rec, mock_reg):
         """L566: verify error message is the actual exception text, not something else."""
         mock_func = MagicMock(side_effect=RuntimeError("unique_error_xyz"))
@@ -746,7 +746,7 @@ class TestPluginToolsLoadedState:
         old_val = RUNTIME_STATE.get("plugin_tools_loaded")
         RUNTIME_STATE["plugin_tools_loaded"] = 999  # sentinel
 
-        with patch("mind_clone.tools.registry.TOOL_DISPATCH", {}):
+        with patch("mind_clone.tools.registry.dispatch.TOOL_DISPATCH", {}):
             with patch.dict("sys.modules", {"mind_clone.core.plugins": None}):
                 try:
                     load_plugin_tools_registry()
@@ -773,7 +773,7 @@ class TestPluginToolsLoadedState:
         fake_plugins = MagicMock()
         fake_plugins.discover_plugins = MagicMock(side_effect=RuntimeError("kaboom"))
 
-        with patch("mind_clone.tools.registry.TOOL_DISPATCH", {}):
+        with patch("mind_clone.tools.registry.dispatch.TOOL_DISPATCH", {}):
             with patch.dict("sys.modules", {"mind_clone.core.plugins": fake_plugins}):
                 load_plugin_tools_registry()
 
@@ -798,7 +798,7 @@ class TestPluginToolsLoadedState:
             return_value={"tool_a": lambda x: x, "tool_b": lambda x: x}
         )
 
-        with patch("mind_clone.tools.registry.TOOL_DISPATCH", {}):
+        with patch("mind_clone.tools.registry.dispatch.TOOL_DISPATCH", {}):
             with patch.dict("sys.modules", {"mind_clone.core.plugins": fake_plugins_mod}):
                 load_plugin_tools_registry()
 
