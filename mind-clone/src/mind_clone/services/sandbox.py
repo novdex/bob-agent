@@ -364,3 +364,54 @@ def tool_safe_shell(args: dict) -> dict:
 
     timeout = int(args.get("timeout", _DEFAULT_SHELL_TIMEOUT))
     return run_sandboxed_shell(command, timeout=timeout)
+
+
+# ===========================================================================
+# Aliases (merged from code_sandbox.py)
+# ===========================================================================
+# code_sandbox.py was a simpler sandbox without blocklists/safety.  These
+# aliases route the old tool names to the safer implementations above.
+# ===========================================================================
+
+# Provide backwards-compatible names
+run_python_sandbox = run_sandboxed_python
+run_shell_sandbox = run_sandboxed_shell
+
+
+def tool_sandbox_python(args: dict) -> dict:
+    """Tool: Run Python code in an isolated sandbox with timeout.
+
+    Alias for tool_safe_python — routes through the safe sandbox with
+    blocklists and environment scrubbing.
+
+    Args:
+        args: Dict with keys ``code`` (str, required), ``timeout`` (int, optional),
+              ``inputs`` (dict, optional — currently ignored by safe sandbox).
+
+    Returns:
+        Sandboxed execution result dict.
+    """
+    code = str(args.get("code", "")).strip()
+    timeout = min(int(args.get("timeout", _DEFAULT_PYTHON_TIMEOUT)), 60)
+    if not code:
+        return {"ok": False, "error": "code required"}
+    return run_sandboxed_python(code, timeout)
+
+
+def tool_sandbox_shell(args: dict) -> dict:
+    """Tool: Run a shell command in a sandbox with timeout.
+
+    Alias for tool_safe_shell — routes through the safe sandbox with
+    blocklists and environment scrubbing.
+
+    Args:
+        args: Dict with keys ``command`` (str, required), ``timeout`` (int, optional).
+
+    Returns:
+        Sandboxed execution result dict.
+    """
+    command = str(args.get("command", "")).strip()
+    timeout = min(int(args.get("timeout", _DEFAULT_SHELL_TIMEOUT)), 30)
+    if not command:
+        return {"ok": False, "error": "command required"}
+    return run_sandboxed_shell(command, timeout)

@@ -76,7 +76,7 @@ packages = ["src/mind_clone"]
 #     "E501",
 #     "E402",
 #     "E711",
-    "E712",  # comparison to True/False
+#     "E712",  # comparison to True/False
 # ]
 # fix = false
 

@@ -201,6 +201,33 @@ def select_vision_model() -> str:
     return primary
 
 
+# ---------------------------------------------------------------------------
+# Keyword-based routing (merged from services/model_router.py)
+# ---------------------------------------------------------------------------
+
+_REASONING_KEYWORDS = {"prove", "derive", "theorem", "mathematical", "logic", "deduce", "infer", "philosophical"}
+_CODE_KEYWORDS = {"debug", "refactor", "write code", "implement", "fix bug", "syntax", "compile"}
+_SIMPLE_KEYWORDS = {"hi", "hello", "thanks", "ok", "yes", "no", "what time", "weather"}
+
+
+def route_model(user_message: str, has_tools: bool = True) -> str:
+    """Return best model ID for this message."""
+    if has_tools:
+        return "kimi-k2.5"  # Tools require Kimi K2.5
+    msg = user_message.lower()
+    if any(k in msg for k in _SIMPLE_KEYWORDS) and len(msg.split()) < 5:
+        return "kimi-k2.5"
+    if any(k in msg for k in _REASONING_KEYWORDS):
+        return "kimi-k2.5"  # Use best available
+    return "kimi-k2.5"  # Default to Kimi
+
+
+def get_routing_hint(user_message: str) -> str:
+    """Get routing explanation for logging."""
+    model = route_model(user_message)
+    return f"Routed to {model}"
+
+
 __all__ = [
     "select_model_for_task",
     "get_model_health",
@@ -212,4 +239,6 @@ __all__ = [
     "select_vision_model_async",
     "VISION_MODEL",
     "VISION_FALLBACK_MODEL",
+    "route_model",
+    "get_routing_hint",
 ]

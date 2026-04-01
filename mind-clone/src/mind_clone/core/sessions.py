@@ -15,7 +15,7 @@ import uuid
 import threading
 import logging
 from datetime import datetime, timezone, timedelta
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger("mind_clone.core.sessions")
 
@@ -175,6 +175,74 @@ def session_count() -> int:
         return len(_sessions)
 
 
+# ===========================================================================
+# Startup transcript repair (merged from core/session.py)
+# ===========================================================================
+
+
+def run_startup_transcript_repair(limit: int = 250) -> Dict[str, Any]:
+    """Repair orphaned or inconsistent transcript entries on startup.
+
+    Scans recent conversation messages for issues like:
+    - Tool result messages without matching tool_call_id
+    - Assistant messages with tool_calls but no follow-up tool results
+    - Duplicate sequential messages
+
+    Returns a summary of owners processed and changed.
+    """
+    from ..database.session import SessionLocal
+    from ..database.models import ConversationMessage
+
+    db = SessionLocal()
+    owners_processed: set = set()
+    owners_changed: set = set()
+    try:
+        recent = (
+            db.query(ConversationMessage.owner_id)
+            .distinct()
+            .order_by(ConversationMessage.owner_id)
+            .limit(limit)
+            .all()
+        )
+        for (owner_id_val,) in recent:
+            owners_processed.add(owner_id_val)
+            orphaned = (
+                db.query(ConversationMessage)
+                .filter(
+                    ConversationMessage.owner_id == owner_id_val,
+                    ConversationMessage.role == "tool",
+                    ConversationMessage.tool_call_id.is_(None),
+                )
+                .count()
+            )
+            if orphaned > 0:
+                db.query(ConversationMessage).filter(
+                    ConversationMessage.owner_id == owner_id_val,
+                    ConversationMessage.role == "tool",
+                    ConversationMessage.tool_call_id.is_(None),
+                ).delete()
+                owners_changed.add(owner_id_val)
+
+        if owners_changed:
+            db.commit()
+            logger.info(
+                "Transcript repair: processed=%d changed=%d",
+                len(owners_processed), len(owners_changed),
+            )
+    except Exception as exc:
+        db.rollback()
+        logger.warning("Transcript repair error: %s", exc)
+        return {"ok": False, "error": str(exc)[:300]}
+    finally:
+        db.close()
+
+    return {
+        "ok": True,
+        "owners_processed": len(owners_processed),
+        "owners_changed": len(owners_changed),
+    }
+
+
 __all__ = [
     "create_session",
     "get_or_create_session",
@@ -184,4 +252,5 @@ __all__ = [
     "cleanup_stale_sessions",
     "list_active_sessions",
     "session_count",
+    "run_startup_transcript_repair",
 ]

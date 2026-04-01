@@ -150,7 +150,7 @@ def tool_run_experiment(args: dict) -> dict:
 def tool_create_skill_md(args: dict) -> dict:
     """Tool: Create a new markdown-based skill that teaches Bob a procedure."""
     try:
-        from ..services.skill_manager import tool_create_skill as _impl
+        from ..services.skills import tool_create_skill as _impl
         return _impl(args)
     except Exception as e:
         return {"ok": False, "error": str(e)[:200]}
@@ -159,7 +159,7 @@ def tool_create_skill_md(args: dict) -> dict:
 def tool_list_skills_md(args: dict) -> dict:
     """Tool: List all markdown-based skills available to Bob."""
     try:
-        from ..services.skill_manager import tool_list_skills_md as _impl
+        from ..services.skills import tool_list_skills_md as _impl
         return _impl(args)
     except Exception as e:
         return {"ok": False, "error": str(e)[:200]}
@@ -168,7 +168,7 @@ def tool_list_skills_md(args: dict) -> dict:
 def tool_safe_improve(args: dict) -> dict:
     """Tool: Run safe nightly improvement — reviews performance, creates skills, tunes config. Never touches source code."""
     try:
-        from ..services.safe_improve import tool_safe_improve as _impl
+        from ..services.self_improve import tool_safe_improve as _impl
         return _impl(args)
     except Exception as e:
         return {"ok": False, "error": str(e)[:200]}
@@ -177,7 +177,7 @@ def tool_safe_improve(args: dict) -> dict:
 def tool_run_chain(args: dict) -> dict:
     """Tool: Run a named skill chain — execute skills in sequence, piping output forward."""
     try:
-        from ..services.skill_chain import tool_run_chain as _impl
+        from ..services.skills import tool_run_chain as _impl
         return _impl(args)
     except Exception as e:
         return {"ok": False, "error": str(e)[:200]}
@@ -186,7 +186,7 @@ def tool_run_chain(args: dict) -> dict:
 def tool_create_chain(args: dict) -> dict:
     """Tool: Create a new skill chain — define a pipeline of skills to run in sequence."""
     try:
-        from ..services.skill_chain import tool_create_chain as _impl
+        from ..services.skills import tool_create_chain as _impl
         return _impl(args)
     except Exception as e:
         return {"ok": False, "error": str(e)[:200]}
@@ -338,14 +338,14 @@ def tool_run_learning(args: dict) -> dict:
 
 def tool_sandbox_python(args: dict) -> dict:
     try:
-        from ..services.code_sandbox import tool_sandbox_python as _impl
+        from ..services.sandbox import tool_sandbox_python as _impl
         return _impl(args)
     except Exception as e:
         return {"ok": False, "error": str(e)[:200]}
 
 def tool_sandbox_shell(args: dict) -> dict:
     try:
-        from ..services.code_sandbox import tool_sandbox_shell as _impl
+        from ..services.sandbox import tool_sandbox_shell as _impl
         return _impl(args)
     except Exception as e:
         return {"ok": False, "error": str(e)[:200]}
@@ -429,14 +429,14 @@ def tool_run_briefing(args: dict) -> dict:
 
 def tool_run_self_tests(args: dict) -> dict:
     try:
-        from ..services.self_tester import tool_run_self_tests as _impl
+        from ..services.self_improve import tool_run_self_tests as _impl
         return _impl(args)
     except Exception as e:
         return {"ok": False, "error": str(e)[:200]}
 
 def tool_generate_tests(args: dict) -> dict:
     try:
-        from ..services.self_tester import tool_generate_tests as _impl
+        from ..services.self_improve import tool_generate_tests as _impl
         return _impl(args)
     except Exception as e:
         return {"ok": False, "error": str(e)[:200]}

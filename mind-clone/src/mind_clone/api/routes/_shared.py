@@ -786,7 +786,7 @@ except ImportError:
 
 
 try:
-    from ...core.session import run_startup_transcript_repair
+    from ...core.sessions import run_startup_transcript_repair
 except ImportError:
 
     def run_startup_transcript_repair(limit: int = 250) -> dict:

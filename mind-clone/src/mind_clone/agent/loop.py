@@ -698,7 +698,7 @@ def run_agent_turn(
 
             # 6. Self-play improvement for opinion/evaluation questions
             try:
-                from ..services.self_play import self_play_improve
+                from ..services.self_improve import self_play_improve
                 content = self_play_improve(user_message, content)
             except Exception:
                 pass
@@ -740,7 +740,7 @@ def run_agent_turn(
 
             # 10. Auto-create skill from successful tool-heavy turns
             try:
-                from ..services.skill_manager import auto_create_skill_from_turn
+                from ..services.skills import auto_create_skill_from_turn
                 if len(_tools_used_this_turn) >= 2:
                     threading.Thread(
                         target=auto_create_skill_from_turn,
