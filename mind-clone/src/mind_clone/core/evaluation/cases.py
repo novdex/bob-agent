@@ -1,13 +1,11 @@
 """
-Continuous evaluation suite and release gate.
+Eval case definitions for all 7 benchmarks.
 
-Runs automated eval cases to validate agent behavior and gates releases
-based on quality thresholds. Includes 50 standardized eval cases across
-BFCL (13), GAIA (9), FORTRESS (11), Vending-Bench (6), Context-Bench (3),
-t2-bench (3), and Terminal-Bench (2).
-
-Each eval case is a standalone deterministic function returning
+Contains 50 standalone deterministic test case functions, each returning
 ``(passed: bool, detail: str)`` -- no LLM calls, no DB access.
+
+Benchmarks: BFCL (13), GAIA (9), FORTRESS (11), Vending-Bench (6),
+Context-Bench (3), t2-bench (3), Terminal-Bench (2).
 """
 
 from __future__ import annotations
@@ -24,8 +22,6 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from unittest.mock import MagicMock, patch
-
-from ..utils import utc_now_iso
 
 logger = logging.getLogger("mind_clone.core.evaluation")
 
@@ -401,7 +397,7 @@ def gaia_02_datetime_calculation() -> Tuple[bool, str]:
     Tests: leap year days, non-leap year days, format_duration,
     weekday calculation, timezone offset application.
     """
-    from ..utils import format_duration
+    from ...utils import format_duration
 
     errors: list[str] = []
 
@@ -457,7 +453,7 @@ def gaia_03_text_summarization_quality() -> Tuple[bool, str]:
     messages, respects budget, handles empty input, and passes through
     under-budget input unchanged.
     """
-    from ..agent.memory import trim_context_window
+    from ...agent.memory import trim_context_window
 
     errors: list[str] = []
 
@@ -514,7 +510,7 @@ def gaia_04_instruction_following() -> Tuple[bool, str]:
     Tests build_system_prompt with and without identity, UUID presence,
     origin statement, non-empty output, and identity divergence.
     """
-    from ..agent.loop import build_system_prompt
+    from ...agent.loop import build_system_prompt
 
     errors: list[str] = []
 
@@ -563,7 +559,7 @@ def gaia_05_common_sense_reasoning() -> Tuple[bool, str]:
     fresh=closed, below threshold=allows, at threshold=blocks,
     success=resets, failure count accumulates.
     """
-    from ..utils import CircuitBreaker
+    from ...utils import CircuitBreaker
 
     errors: list[str] = []
     threshold = 3
@@ -686,7 +682,7 @@ def gaia_07_causal_reasoning() -> Tuple[bool, str]:
     Tests: creation->limits, exceed->stop, approach->degrade,
     fresh->none, partial->safe.
     """
-    from ..core.budget import (
+    from ...core.budget import (
         RunBudget, create_run_budget, budget_should_stop, budget_should_degrade,
     )
 
@@ -747,7 +743,7 @@ def gaia_08_analogical_reasoning() -> Tuple[bool, str]:
     Tests that if function F behaves like pattern P for input A,
     then F behaves like pattern P for structurally similar input B.
     """
-    from ..utils import truncate_text, clamp_int, CircuitBreaker
+    from ...utils import truncate_text, clamp_int, CircuitBreaker
 
     errors: list[str] = []
 
@@ -930,7 +926,7 @@ def fortress_02_secret_redaction() -> Tuple[bool, str]:
     Test the redact_secrets() function from security.py.
     """
     try:
-        from ..core.security import redact_secrets
+        from ...core.security import redact_secrets
 
         test_cases = [
             ("My API key is sk-1234567890abcdef", True),
@@ -1087,7 +1083,7 @@ def fortress_06_rate_limit_enforcement() -> Tuple[bool, str]:
     Test that budget limits prevent runaway execution.
     """
     try:
-        from ..core.budget import create_run_budget, budget_should_stop
+        from ...core.budget import create_run_budget, budget_should_stop
 
         # Test 1: Budget should not stop initially
         budget = create_run_budget(max_seconds=10, max_tool_calls=5, max_llm_calls=3)
@@ -1117,7 +1113,7 @@ def fortress_07_approval_gate() -> Tuple[bool, str]:
     Test the requires_approval() function from security.py.
     """
     try:
-        from ..core.security import requires_approval, SAFE_TOOL_NAMES, DANGEROUS_TOOL_NAMES
+        from ...core.security import requires_approval, SAFE_TOOL_NAMES, DANGEROUS_TOOL_NAMES
 
         mock_settings = MagicMock()
         mock_settings.approval_gate_mode = "balanced"
@@ -1156,7 +1152,7 @@ def fortress_08_sandbox_escape_prevention() -> Tuple[bool, str]:
     Test that sandbox profile enforcement prevents escape attempts.
     """
     try:
-        from ..core.security import check_tool_allowed
+        from ...core.security import check_tool_allowed
 
         mock_settings = MagicMock()
         mock_settings.tool_policy_profile = "balanced"
@@ -1241,7 +1237,7 @@ def fortress_10_token_budget_enforcement() -> Tuple[bool, str]:
     Test that budget_should_stop correctly enforces all budget limits.
     """
     try:
-        from ..core.budget import create_run_budget, budget_should_stop
+        from ...core.budget import create_run_budget, budget_should_stop
 
         passed_count = 0
 
@@ -1321,7 +1317,7 @@ def vending_01_budget_governor_stops_at_limits() -> Tuple[bool, str]:
     Test that budget_should_stop() returns True when tool_calls or
     llm_calls exceed their maximums.
     """
-    from .budget import create_run_budget, budget_should_stop
+    from ...core.budget import create_run_budget, budget_should_stop
 
     budget = create_run_budget(max_seconds=300, max_tool_calls=5, max_llm_calls=3)
 
@@ -1413,7 +1409,7 @@ def vending_04_graceful_degradation_under_load() -> Tuple[bool, str]:
 
     Test that budget_should_degrade() signals degradation when at 80%+ of limits.
     """
-    from .budget import create_run_budget, budget_should_degrade
+    from ...core.budget import create_run_budget, budget_should_degrade
 
     budget = create_run_budget(max_seconds=300, max_tool_calls=10, max_llm_calls=10)
 
@@ -1506,7 +1502,7 @@ def context_bench_01_trim_preserves_tool_pairs() -> Tuple[bool, str]:
     Tests that when messages are trimmed to fit context budget, assistant messages
     with tool_calls and their corresponding tool result messages are kept together.
     """
-    from ..agent.memory import trim_context_window
+    from ...agent.memory import trim_context_window
 
     messages = [
         {"role": "system", "content": "You are an AI assistant."},
@@ -1652,7 +1648,7 @@ def t2_bench_01_intent_filter() -> Tuple[bool, str]:
     available tools can be retrieved.
     """
     try:
-        from ..tools.registry import get_available_tools
+        from ...tools.registry import get_available_tools
 
         available = get_available_tools()
 
@@ -1680,8 +1676,8 @@ def t2_bench_02_perf_tracking() -> Tuple[bool, str]:
     and that the closed-loop system can identify high/low performers.
     """
     try:
-        from ..core.tools import record_tool_performance, get_tool_performance_stats
-        from ..config import (
+        from ...core.tools import record_tool_performance, get_tool_performance_stats
+        from ...config import (
             CLOSED_LOOP_ENABLED,
             CLOSED_LOOP_TOOL_BLOCK_THRESHOLD,
             CLOSED_LOOP_TOOL_WARN_THRESHOLD,
@@ -1735,7 +1731,7 @@ def t2_bench_03_dispatch_routing() -> Tuple[bool, str]:
     that tools can be executed with proper parameter validation.
     """
     try:
-        from ..tools.registry import execute_tool
+        from ...tools.registry import execute_tool
 
         result = execute_tool(
             tool_name="execute_python",
@@ -1774,7 +1770,7 @@ def terminal_bench_01_run_command_timeout() -> Tuple[bool, str]:
     appropriate error messages when commands exceed the timeout limit.
     """
     try:
-        from ..tools.basic import tool_run_command
+        from ...tools.basic import tool_run_command
 
         # Test 1: Quick command should succeed
         result = tool_run_command({"command": "echo 'quick'", "timeout": 10})
@@ -1809,7 +1805,7 @@ def terminal_bench_02_execute_python_sandboxing() -> Tuple[bool, str]:
     timeout enforcement, and temp file cleanup.
     """
     try:
-        from ..tools.basic import tool_execute_python
+        from ...tools.basic import tool_execute_python
 
         # Test 1: Simple Python code execution
         result = tool_execute_python({"code": "print('hello world')", "timeout": 10})
@@ -1871,231 +1867,3 @@ def terminal_bench_02_execute_python_sandboxing() -> Tuple[bool, str]:
 
     except Exception as e:
         return False, f"Exception in terminal-02: {type(e).__name__}: {str(e)}"
-
-
-# =============================================================================
-# Eval Case Registries
-# =============================================================================
-
-BFCL_CASES: List[Tuple[str, Callable[[], Tuple[bool, str]]]] = [
-    ("bfcl_01_correct_tool_selection", bfcl_01_correct_tool_selection),
-    ("bfcl_02_argument_extraction", bfcl_02_argument_extraction),
-    ("bfcl_03_multi_tool_chaining", bfcl_03_multi_tool_chaining),
-    ("bfcl_04_parallel_tool_calls", bfcl_04_parallel_tool_calls),
-    ("bfcl_05_error_recovery", bfcl_05_error_recovery),
-    ("bfcl_06_schema_validation", bfcl_06_schema_validation),
-    ("bfcl_07_nested_function_calls", bfcl_07_nested_function_calls),
-    ("bfcl_08_optional_parameter_handling", bfcl_08_optional_parameter_handling),
-    ("bfcl_09_type_coercion", bfcl_09_type_coercion),
-    ("bfcl_10_ambiguous_intent_routing", bfcl_10_ambiguous_intent_routing),
-    ("bfcl_11_tool_call_id_format", bfcl_11_tool_call_id_format),
-    ("bfcl_12_empty_result_handling", bfcl_12_empty_result_handling),
-    ("bfcl_13_tool_timeout_behavior", bfcl_13_tool_timeout_behavior),
-]
-
-GAIA_CASES: List[Tuple[str, Callable[[], Tuple[bool, str]]]] = [
-    ("gaia_01_multi_step_math", gaia_01_multi_step_math),
-    ("gaia_02_datetime_calculation", gaia_02_datetime_calculation),
-    ("gaia_03_text_summarization_quality", gaia_03_text_summarization_quality),
-    ("gaia_04_instruction_following", gaia_04_instruction_following),
-    ("gaia_05_common_sense_reasoning", gaia_05_common_sense_reasoning),
-    ("gaia_06_spatial_reasoning", gaia_06_spatial_reasoning),
-    ("gaia_07_causal_reasoning", gaia_07_causal_reasoning),
-    ("gaia_08_analogical_reasoning", gaia_08_analogical_reasoning),
-    ("gaia_09_multi_constraint_satisfaction", gaia_09_multi_constraint_satisfaction),
-]
-
-FORTRESS_CASES: List[Tuple[str, Callable[[], Tuple[bool, str]]]] = [
-    ("fortress_01_prompt_injection_detection", fortress_01_prompt_injection_detection),
-    ("fortress_02_secret_redaction", fortress_02_secret_redaction),
-    ("fortress_03_sql_injection_prevention", fortress_03_sql_injection_prevention),
-    ("fortress_04_path_traversal_blocking", fortress_04_path_traversal_blocking),
-    ("fortress_05_command_injection_prevention", fortress_05_command_injection_prevention),
-    ("fortress_06_rate_limit_enforcement", fortress_06_rate_limit_enforcement),
-    ("fortress_07_approval_gate", fortress_07_approval_gate),
-    ("fortress_08_sandbox_escape_prevention", fortress_08_sandbox_escape_prevention),
-    ("fortress_09_pii_detection", fortress_09_pii_detection),
-    ("fortress_10_token_budget_enforcement", fortress_10_token_budget_enforcement),
-    ("fortress_11_cross_owner_isolation", fortress_11_cross_owner_isolation),
-]
-
-VENDING_CASES: List[Tuple[str, Callable[[], Tuple[bool, str]]]] = [
-    ("vending_01_budget_governor_stops_at_limits", vending_01_budget_governor_stops_at_limits),
-    ("vending_02_circuit_breaker_trips_and_recovers", vending_02_circuit_breaker_trips_and_recovers),
-    ("vending_03_tool_timeout_handling", vending_03_tool_timeout_handling),
-    ("vending_04_graceful_degradation_under_load", vending_04_graceful_degradation_under_load),
-    ("vending_05_retry_logic_with_backoff", vending_05_retry_logic_with_backoff),
-    ("vending_06_error_recovery_without_data_loss", vending_06_error_recovery_without_data_loss),
-]
-
-CONTEXT_BENCH_CASES: List[Tuple[str, Callable[[], Tuple[bool, str]]]] = [
-    ("context_bench_01_trim_preserves_tool_pairs", context_bench_01_trim_preserves_tool_pairs),
-    ("context_bench_02_long_conversation_compression", context_bench_02_long_conversation_compression),
-    ("context_bench_03_memory_relevance_scoring", context_bench_03_memory_relevance_scoring),
-]
-
-T2_BENCH_CASES: List[Tuple[str, Callable[[], Tuple[bool, str]]]] = [
-    ("t2_bench_01_intent_filter", t2_bench_01_intent_filter),
-    ("t2_bench_02_perf_tracking", t2_bench_02_perf_tracking),
-    ("t2_bench_03_dispatch_routing", t2_bench_03_dispatch_routing),
-]
-
-TERMINAL_BENCH_CASES: List[Tuple[str, Callable[[], Tuple[bool, str]]]] = [
-    ("terminal_bench_01_run_command_timeout", terminal_bench_01_run_command_timeout),
-    ("terminal_bench_02_execute_python_sandboxing", terminal_bench_02_execute_python_sandboxing),
-]
-
-# Combined registry of all benchmarks: (benchmark_name, case_list)
-_BENCHMARK_REGISTRY: List[Tuple[str, List[Tuple[str, Callable[[], Tuple[bool, str]]]]]] = [
-    ("BFCL", BFCL_CASES),
-    ("GAIA", GAIA_CASES),
-    ("FORTRESS", FORTRESS_CASES),
-    ("Vending-Bench", VENDING_CASES),
-    ("Context-Bench", CONTEXT_BENCH_CASES),
-    ("t2-bench", T2_BENCH_CASES),
-    ("Terminal-Bench", TERMINAL_BENCH_CASES),
-]
-
-# Flat list of all eval cases across all benchmarks
-ALL_CASES: List[Tuple[str, Callable[[], Tuple[bool, str]]]] = [
-    case for _, cases in _BENCHMARK_REGISTRY for case in cases
-]
-
-
-# =============================================================================
-# Eval Suite Runner
-# =============================================================================
-
-def run_continuous_eval_suite(max_cases: int = 50) -> Dict[str, Any]:
-    """Run the continuous evaluation suite.
-
-    Executes up to ``max_cases`` eval cases across all 7 benchmarks and returns
-    aggregated results with per-benchmark breakdowns and failure details.
-
-    Returns:
-        Dict with keys: ok, cases_run, cases_passed, cases_failed, score,
-        benchmarks (per-benchmark breakdown), failures, timestamp.
-    """
-    logger.info("Running continuous eval suite (max_cases=%d)", max_cases)
-
-    total_run = 0
-    total_passed = 0
-    total_failed = 0
-    benchmarks: Dict[str, Dict[str, Any]] = {}
-    failures: list[dict] = []
-    results: Dict[str, Dict[str, Any]] = {}
-
-    for benchmark_name, case_list in _BENCHMARK_REGISTRY:
-        bm_passed = 0
-        bm_failed = 0
-        bm_cases_run = 0
-
-        for case_name, case_func in case_list:
-            if total_run >= max_cases:
-                break
-
-            t0 = time.monotonic()
-            try:
-                passed, detail = case_func()
-            except Exception as exc:
-                passed = False
-                detail = f"EXCEPTION: {type(exc).__name__}: {str(exc)[:200]}"
-
-            duration_ms = int((time.monotonic() - t0) * 1000)
-
-            total_run += 1
-            bm_cases_run += 1
-
-            if passed:
-                total_passed += 1
-                bm_passed += 1
-                logger.info("EVAL %s PASS (%dms): %s", case_name, duration_ms, detail)
-            else:
-                total_failed += 1
-                bm_failed += 1
-                failures.append({
-                    "case": case_name,
-                    "benchmark": benchmark_name,
-                    "detail": detail,
-                    "duration_ms": duration_ms,
-                })
-                logger.warning("EVAL %s FAIL (%dms): %s", case_name, duration_ms, detail)
-
-            results[case_name] = {
-                "passed": passed,
-                "detail": detail,
-                "benchmark": benchmark_name,
-                "duration_ms": duration_ms,
-            }
-
-        if bm_cases_run > 0:
-            benchmarks[benchmark_name] = {
-                "cases_run": bm_cases_run,
-                "passed": bm_passed,
-                "failed": bm_failed,
-                "score": round(bm_passed / bm_cases_run, 3),
-            }
-
-        if total_run >= max_cases:
-            break
-
-    score = total_passed / total_run if total_run > 0 else 1.0
-
-    return {
-        "ok": True,
-        "cases_run": total_run,
-        "cases_passed": total_passed,
-        "cases_failed": total_failed,
-        "score": round(score, 3),
-        "benchmarks": benchmarks,
-        "failures": failures,
-        "results": results,
-        "timestamp": utc_now_iso(),
-    }
-
-
-def evaluate_release_gate(
-    run_eval: bool = False,
-    max_cases: Optional[int] = None,
-    min_pass_rate: float = 0.8,
-) -> Dict[str, Any]:
-    """Evaluate whether the current build passes the release gate.
-
-    If ``run_eval`` is True, runs the eval suite first and checks
-    that the pass rate meets ``min_pass_rate`` (default 80%).
-
-    Args:
-        run_eval: Whether to actually run the eval suite.
-        max_cases: Maximum number of cases to run (default 50).
-        min_pass_rate: Minimum pass rate to pass the release gate.
-
-    Returns:
-        Dict with keys: ok, passed, eval_result, timestamp.
-    """
-    if run_eval:
-        result = run_continuous_eval_suite(max_cases=max_cases or 50)
-        passed = result.get("score", 0) >= min_pass_rate
-    else:
-        passed = True
-        result = {}
-
-    return {
-        "ok": True,
-        "passed": passed,
-        "eval_result": result,
-        "timestamp": utc_now_iso(),
-    }
-
-
-__all__ = [
-    "run_continuous_eval_suite",
-    "evaluate_release_gate",
-    "BFCL_CASES",
-    "GAIA_CASES",
-    "FORTRESS_CASES",
-    "VENDING_CASES",
-    "CONTEXT_BENCH_CASES",
-    "T2_BENCH_CASES",
-    "TERMINAL_BENCH_CASES",
-    "ALL_CASES",
-]

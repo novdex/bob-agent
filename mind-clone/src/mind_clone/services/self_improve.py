@@ -384,7 +384,7 @@ async def _send_improvement_report(owner_id: int, report: str) -> bool:
         return False
 
 
-def run_safe_improvement(owner_id: int) -> dict[str, Any]:
+def run_safe_improvement(owner_id: int) -> dict[str, Any]:  # DEAD CODE: not imported anywhere outside this file (tool_safe_improve is registered in registry but this function is internal)
     """Run the full safe nightly improvement cycle.
 
     This replaces the dangerous code-rewriting experiment with:

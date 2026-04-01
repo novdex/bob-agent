@@ -49,7 +49,7 @@ _WEEKLY_INTERVAL_SECONDS: int = 7 * 24 * 3600
 # ---------------------------------------------------------------------------
 
 
-def generate_challenges(owner_id: int) -> List[Dict[str, Any]]:
+def generate_challenges(owner_id: int) -> List[Dict[str, Any]]:  # DEAD CODE: not imported anywhere outside this file
     """Ask the LLM to create 3 challenges across random AGI pillars.
 
     Each challenge is a dict with keys: pillar, description, difficulty.
@@ -254,7 +254,7 @@ def save_challenge_results(owner_id: int, results: List[Dict[str, Any]]) -> bool
         db.close()
 
 
-def run_self_challenge(owner_id: int = 1, send_to_telegram: bool = True) -> Dict[str, Any]:
+def run_self_challenge(owner_id: int = 1, send_to_telegram: bool = True) -> Dict[str, Any]:  # DEAD CODE: not imported anywhere outside this file
     """Full self-challenge cycle: generate -> execute -> evaluate -> save -> report.
 
     Args:
@@ -364,7 +364,7 @@ def _send_challenge_report(
 # ---------------------------------------------------------------------------
 
 
-def tool_self_challenge(args: dict) -> dict:
+def tool_self_challenge(args: dict) -> dict:  # DEAD CODE: not imported anywhere outside this file
     """Tool: Run the weekly AGI pillar self-challenge.
 
     Args:
@@ -388,7 +388,7 @@ def tool_self_challenge(args: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def ensure_self_challenge_job(db: Any, owner_id: int = 1) -> None:
+def ensure_self_challenge_job(db: Any, owner_id: int = 1) -> None:  # DEAD CODE: not imported anywhere outside this file
     """Create the weekly self-challenge ScheduledJob if it doesn't already exist.
 
     Args:

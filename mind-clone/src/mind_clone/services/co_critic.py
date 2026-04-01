@@ -43,7 +43,7 @@ _EVOLVED_PRINCIPLES: list[str] = []
 _PRINCIPLES_VERSION: int = 0
 
 
-def get_current_principles() -> list[str]:
+def get_current_principles() -> list[str]:  # DEAD CODE: not imported anywhere outside this file (only used internally by co_critique)
     """Get current critic principles (evolved or default)."""
     return _EVOLVED_PRINCIPLES if _EVOLVED_PRINCIPLES else _DEFAULT_PRINCIPLES
 

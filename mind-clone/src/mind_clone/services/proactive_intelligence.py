@@ -94,7 +94,7 @@ def _get_chat_id(owner_id: int) -> Optional[str]:
 # ---------------------------------------------------------------------------
 
 
-def auto_respond_to_triggers(owner_id: int) -> Dict[str, Any]:
+def auto_respond_to_triggers(owner_id: int) -> Dict[str, Any]:  # DEAD CODE: not imported anywhere outside this file
     """Scan event triggers and auto-fix detected issues.
 
     Actions per trigger type:
@@ -214,7 +214,7 @@ def auto_respond_to_triggers(owner_id: int) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def check_trending_news(owner_id: int) -> Dict[str, Any]:
+def check_trending_news(owner_id: int) -> Dict[str, Any]:  # DEAD CODE: not imported anywhere outside this file
     """Search for breaking AI news and alert if genuinely important.
 
     Searches the web for recent AI developments, asks the LLM to filter
@@ -346,7 +346,7 @@ def _send_trending_alert(owner_id: int, items: List[Dict[str, Any]]) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def generate_smart_suggestions(owner_id: int) -> Dict[str, Any]:
+def generate_smart_suggestions(owner_id: int) -> Dict[str, Any]:  # DEAD CODE: not imported anywhere outside this file
     """Generate 1-2 proactive suggestions based on user profile, world model, and recent activity.
 
     Loads context from multiple sources and asks the LLM to generate
@@ -473,7 +473,7 @@ def _send_suggestions(owner_id: int, suggestions: List[str]) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def run_proactive_intelligence(owner_id: int) -> Dict[str, Any]:
+def run_proactive_intelligence(owner_id: int) -> Dict[str, Any]:  # DEAD CODE: not imported anywhere outside this file
     """Run the full proactive intelligence cycle: triggers -> trending -> suggestions.
 
     Args:
@@ -520,7 +520,7 @@ def run_proactive_intelligence(owner_id: int) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def tool_proactive_intelligence(args: dict) -> dict:
+def tool_proactive_intelligence(args: dict) -> dict:  # DEAD CODE: not imported anywhere outside this file
     """Tool wrapper: run proactive intelligence engine.
 
     Args (dict):

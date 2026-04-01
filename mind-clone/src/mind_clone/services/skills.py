@@ -304,7 +304,7 @@ def _skill_keyword_set(text: str) -> set:
     }
 
 
-def synthesize_skill_blueprint(
+def synthesize_skill_blueprint(  # DEAD CODE: not imported anywhere outside this file
     request_text: str, preferred_name: Optional[str] = None
 ) -> Dict[str, Any]:
     """Generate a skill blueprint (key, title, body, hints) from a user request.
@@ -543,7 +543,7 @@ def load_skills() -> list[dict]:
     return skills
 
 
-def match_skill(user_message: str) -> dict | None:
+def match_skill(user_message: str) -> dict | None:  # DEAD CODE: not imported anywhere outside this file
     """Check if a user message matches any skill's trigger keywords.
 
     Uses keyword overlap scoring — the skill with the highest ratio of
@@ -668,7 +668,7 @@ def list_skills_md() -> list[dict]:
     ]
 
 
-def get_skill_injection(user_message: str) -> str | None:
+def get_skill_injection(user_message: str) -> str | None:  # DEAD CODE: not imported anywhere outside this file
     """If a skill matches the user message, return it as a system injection.
 
     This string gets added to the LLM context so Bob follows the

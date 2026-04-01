@@ -201,7 +201,7 @@ async def _send_proactive_report(owner_id: int, goal_title: str, summary: str) -
 # Main autonomy loop
 # ---------------------------------------------------------------------------
 
-async def autonomy_loop() -> None:
+async def autonomy_loop() -> None:  # DEAD CODE: not imported anywhere outside this file
     """Background loop that runs every AUTONOMY_LOOP_INTERVAL_SECONDS.
 
     On each tick:
@@ -329,6 +329,6 @@ async def _autonomy_tick(engine: GoalEngine) -> None:
 # Supervisor alias (matches naming pattern in _shared.py)
 # ---------------------------------------------------------------------------
 
-async def autonomy_supervisor_loop() -> None:
+async def autonomy_supervisor_loop() -> None:  # DEAD CODE: not imported anywhere outside this file
     """Entry point for the autonomy background task (matches supervisor naming convention)."""
     await autonomy_loop()
