@@ -149,39 +149,58 @@ def count_tokens_approx(text: str) -> int:
 
 
 class CircuitBreaker:
-    """Simple circuit breaker implementation."""
-    
-    def __init__(self, failure_threshold: int = 5, cooldown_seconds: int = 60):
+    """Circuit breaker with three states: closed, open, half-open.
+
+    After ``failure_threshold`` consecutive failures the circuit opens
+    (all calls are skipped).  After ``cooldown_seconds`` one probe
+    request is allowed (half-open).  If it succeeds the circuit closes;
+    if it fails the circuit re-opens for another cooldown period.
+    """
+
+    def __init__(self, failure_threshold: int = 3, cooldown_seconds: int = 60):
         self.failure_threshold = failure_threshold
         self.cooldown_seconds = cooldown_seconds
-        self.failures = 0
+        self.failures: int = 0
         self.last_failure_time: Optional[float] = None
-        self.state = "closed"  # closed, open, half-open
-    
-    def record_success(self):
-        """Record a successful call."""
+        self.state: str = "closed"  # closed | open | half-open
+
+    def record_success(self) -> None:
+        """Record a successful call — resets failures and closes the circuit."""
         self.failures = 0
         self.state = "closed"
-    
-    def record_failure(self):
-        """Record a failed call."""
+
+    def record_failure(self) -> None:
+        """Record a failed call.
+
+        In *half-open* state a single failure re-opens the circuit
+        immediately (no need to hit the threshold again).
+        """
         import time
+
         self.failures += 1
         self.last_failure_time = time.monotonic()
-        if self.failures >= self.failure_threshold:
+        if self.state == "half-open":
+            # Probe failed — reopen for another cooldown cycle
             self.state = "open"
-    
+        elif self.failures >= self.failure_threshold:
+            self.state = "open"
+
     def can_execute(self) -> bool:
-        """Check if execution is allowed."""
+        """Check if a call is allowed through the breaker."""
         import time
+
         if self.state == "closed":
             return True
         if self.state == "open":
-            if self.last_failure_time and (time.monotonic() - self.last_failure_time) > self.cooldown_seconds:
+            if (
+                self.last_failure_time is not None
+                and (time.monotonic() - self.last_failure_time) > self.cooldown_seconds
+            ):
                 self.state = "half-open"
                 return True
             return False
-        return True  # half-open
+        # half-open — allow exactly one probe
+        return True
 
 
 class RateLimiter:

@@ -2,16 +2,56 @@
 Configuration module for Mind Clone Agent.
 
 All settings are loaded from environment variables with sensible defaults.
+
+Nested config dataclasses (``LLMConfig``, ``TelegramConfig``,
+``SecurityConfig``) provide a structured view of related settings via
+read-only properties on ``Settings`` without breaking existing flat-field
+access (e.g. ``settings.telegram_bot_token`` still works).
 """
 
 from __future__ import annotations
 
 import os
 import tempfile
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Set, List, Dict, Optional, Any, Annotated
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict, NoDecode
+
+
+# =========================================================================
+# Nested config dataclasses (P3-C1)
+# =========================================================================
+
+@dataclass(frozen=True)
+class LLMConfig:
+    """Grouped LLM-related settings (read-only snapshot)."""
+
+    primary_model: str = ""
+    failover_chain: list = field(default_factory=list)
+    temperature: float = 0.7
+    max_tokens: int = 4000
+    timeout: int = 90
+
+
+@dataclass(frozen=True)
+class TelegramConfig:
+    """Grouped Telegram-related settings (read-only snapshot)."""
+
+    bot_token: str = ""
+    webhook_base_url: str = ""
+    polling_mode: bool = True
+
+
+@dataclass(frozen=True)
+class SecurityConfig:
+    """Grouped security-related settings (read-only snapshot)."""
+
+    tool_policy: str = "power"
+    approval_gate_mode: str = "off"
+    sandbox_profile: str = "power"
+    secret_guardrail: bool = True
 
 
 def _env_flag(name: str, default: bool = False) -> bool:
@@ -107,7 +147,7 @@ class Settings(BaseSettings):
     llm_structured_task_enabled: bool = Field(default=True, alias="LLM_STRUCTURED_TASK_ENABLED")
     llm_structured_task_max_attempts: int = 2
 
-    circuit_breaker_failure_threshold: int = 5
+    circuit_breaker_failure_threshold: int = 3
     circuit_breaker_cooldown_seconds: int = 60
 
     # =========================================================================
@@ -436,6 +476,43 @@ class Settings(BaseSettings):
         }
         return presets.get(self.policy_pack, presets["dev"])
 
+    # =========================================================================
+    # Nested config accessors (P3-C1)
+    #
+    # These expose grouped views of related flat fields.  Old code continues
+    # to work with ``settings.telegram_bot_token``; new code can also use
+    # ``settings.llm_config.temperature``.
+    # =========================================================================
+
+    @property
+    def llm_config(self) -> "LLMConfig":
+        """Snapshot of LLM-related settings."""
+        return LLMConfig(
+            primary_model=self.openrouter_model,
+            temperature=self.llm_temperature,
+            max_tokens=self.llm_max_tokens,
+            timeout=self.llm_request_timeout_seconds,
+        )
+
+    @property
+    def telegram_config(self) -> "TelegramConfig":
+        """Snapshot of Telegram-related settings."""
+        return TelegramConfig(
+            bot_token=self.telegram_bot_token,
+            webhook_base_url=self.webhook_base_url,
+            polling_mode=True,  # currently always polling
+        )
+
+    @property
+    def security_config(self) -> "SecurityConfig":
+        """Snapshot of security-related settings."""
+        return SecurityConfig(
+            tool_policy=self.tool_policy_profile,
+            approval_gate_mode=self.approval_gate_mode,
+            sandbox_profile=self.execution_sandbox_profile,
+            secret_guardrail=self.secret_guardrail_enabled,
+        )
+
 
 # Global settings instance
 settings = Settings()
@@ -614,7 +691,7 @@ TASK_GRAPH_BRANCHING_ENABLED = True
 TASK_GRAPH_MAX_NODES = 100
 TASK_ARTIFACT_RETRIEVE_TOP_K = 5
 TASK_ARTIFACT_MAX_PER_USER = 100
-CIRCUIT_BREAKER_FAILURE_THRESHOLD = 5
+CIRCUIT_BREAKER_FAILURE_THRESHOLD = 3
 CIRCUIT_BREAKER_COOLDOWN_SECONDS = 60
 TASK_GUARD_ORPHAN_LEASE_SECONDS = 300
 NODE_HEARTBEAT_STALE_SECONDS = 60

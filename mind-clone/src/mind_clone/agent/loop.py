@@ -32,6 +32,45 @@ logger = logging.getLogger("mind_clone.agent.loop")
 
 MAX_TOOL_LOOPS = 50
 MAX_CONSECUTIVE_LLM_FAILURES = 6
+MAX_CONTEXT_TOKENS = 128_000  # Kimi K2.5 / primary model context limit
+
+def _estimate_tokens(messages: List[dict]) -> int:
+    """Rough token estimate for a list of messages (~4 chars per token)."""
+    return sum(len(str(m.get("content", ""))) // 4 for m in messages)
+
+
+def _emergency_compress(messages: List[dict], target_tokens: int) -> List[dict]:
+    """Aggressively trim messages to fit within *target_tokens*.
+
+    Strategy: keep the system message and the most recent messages,
+    dropping the oldest non-system messages until the budget is met.
+    """
+    if not messages:
+        return messages
+
+    system_msgs = [m for m in messages if m.get("role") == "system"]
+    non_system = [m for m in messages if m.get("role") != "system"]
+
+    # Start from the newest and work backward
+    kept: List[dict] = []
+    budget_chars = target_tokens * 4
+    used = sum(len(str(m.get("content", ""))) for m in system_msgs)
+
+    for msg in reversed(non_system):
+        msg_chars = len(str(msg.get("content", "")))
+        if used + msg_chars > budget_chars:
+            break
+        kept.append(msg)
+        used += msg_chars
+
+    kept.reverse()
+    result = system_msgs + kept
+    logger.info(
+        "EMERGENCY_COMPRESS original=%d kept=%d estimated_tokens=%d target=%d",
+        len(messages), len(result), used // 4, target_tokens,
+    )
+    return result
+
 
 # Gap phrases indicating the LLM doesn't have a capability
 _GAP_PHRASES = frozenset({
@@ -549,6 +588,19 @@ def run_agent_turn(
     _tools_used_this_turn: List[str] = []  # Track tool names for auto-skill creation
 
     while tool_loops < MAX_TOOL_LOOPS:
+        # ---------------------------------------------------------------
+        # Context window guard — hard check before every LLM call
+        # ---------------------------------------------------------------
+        _est = _estimate_tokens(messages)
+        if _est > int(MAX_CONTEXT_TOKENS * 0.9):
+            logger.warning(
+                "CONTEXT_GUARD estimated=%d limit=%d — emergency compress",
+                _est, MAX_CONTEXT_TOKENS,
+            )
+            messages = _emergency_compress(
+                messages, target_tokens=int(MAX_CONTEXT_TOKENS * 0.7)
+            )
+
         # Call LLM
         result = call_llm(messages, tools=tools)
 

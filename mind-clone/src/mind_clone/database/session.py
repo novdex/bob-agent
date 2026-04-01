@@ -26,6 +26,17 @@ engine = create_engine(
     pool_pre_ping=True,
 )
 
+# Enable WAL mode for better concurrent reads and prevent "database is locked"
+# errors when multiple users/cron jobs access simultaneously.
+try:
+    with engine.connect() as _wal_conn:
+        _wal_conn.execute(text("PRAGMA journal_mode=WAL"))
+        _wal_conn.execute(text("PRAGMA busy_timeout=5000"))  # 5 second timeout on lock
+        _wal_conn.commit()
+    logger.info("SQLite WAL mode enabled (busy_timeout=5000ms)")
+except Exception as _wal_err:
+    logger.warning("Failed to enable WAL mode: %s", _wal_err)
+
 # Create session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
