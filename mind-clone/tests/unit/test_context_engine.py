@@ -2,7 +2,7 @@
 Tests for core/context_engine.py — Smart context engineering.
 """
 import pytest
-from mind_clone.core.context_engine import (
+from mind_clone.services.context_engine import (
     TaskPhase,
     detect_task_phase,
     compute_context_budget,

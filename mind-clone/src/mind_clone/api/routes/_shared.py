@@ -12,6 +12,18 @@
 from .shared import *  # noqa: F401,F403
 from .shared import (  # explicit re-exports for type checkers
     _env_flag,
+    _candidate_node_scores,
+    _count_workflow_actions,
+    _ensure_team_agent_owner,
+    _normalize_capability_list,
+    _refresh_node_runtime_metrics,
+    _resolve_identity_owner,
+    _safe_json_dict,
+    _safe_json_list,
+    _upsert_identity_link,
+    _validate_checkpoint_replay_state,
+    _workflow_eval_condition,
+    _workflow_render_template,
     app_lifespan,
     get_db,
     require_ops_auth,
