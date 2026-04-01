@@ -1,4 +1,9 @@
-# CLAUDE.md
+# CLAUDE.md (Repository Root)
+
+> **Scope:** This is the REPO-LEVEL guidance file covering the full `ai-agent-platform/`
+> monorepo (backend + frontend + Docker + CI). For backend-specific details
+> (tool registry, closed loop, self-tuning, bob subagents), see
+> [`mind-clone/CLAUDE.md`](mind-clone/CLAUDE.md).
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 

@@ -33,6 +33,11 @@ GLOVE_ZIP_URL = "https://nlp.stanford.edu/data/glove.6B.zip"
 # ---------------------------------------------------------------------------
 # Module state (thread-safe lazy singleton)
 # ---------------------------------------------------------------------------
+# CONFIRMED LAZY: Vectors are NOT loaded at import time.  _glove_vectors
+# starts as None and is only populated on the first call to
+# _load_glove_vectors(), which is invoked by get_embedding().
+# This means importing this module has zero startup cost.
+# ---------------------------------------------------------------------------
 _glove_vectors: dict[str, np.ndarray] | None = None
 _glove_lock = threading.Lock()
 

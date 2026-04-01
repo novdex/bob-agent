@@ -304,7 +304,9 @@ def _skill_keyword_set(text: str) -> set:
     }
 
 
-def synthesize_skill_blueprint(  # DEAD CODE: not imported anywhere outside this file
+# DEPRECATED: Only called internally by maybe_autocreate_skill_from_gap().
+# Not imported or used from outside this module.
+def synthesize_skill_blueprint(
     request_text: str, preferred_name: Optional[str] = None
 ) -> Dict[str, Any]:
     """Generate a skill blueprint (key, title, body, hints) from a user request.
@@ -543,7 +545,9 @@ def load_skills() -> list[dict]:
     return skills
 
 
-def match_skill(user_message: str) -> dict | None:  # DEAD CODE: not imported anywhere outside this file
+# DEPRECATED: Only called internally by auto_create_skill_from_turn() and get_skill_injection().
+# Not imported from outside this module. Replaced by select_active_skills_for_prompt().
+def match_skill(user_message: str) -> dict | None:
     """Check if a user message matches any skill's trigger keywords.
 
     Uses keyword overlap scoring — the skill with the highest ratio of
@@ -668,7 +672,9 @@ def list_skills_md() -> list[dict]:
     ]
 
 
-def get_skill_injection(user_message: str) -> str | None:  # DEAD CODE: not imported anywhere outside this file
+# DEPRECATED: Not imported from outside this module.
+# Replaced by select_active_skills_for_prompt() which injects DB-backed skills.
+def get_skill_injection(user_message: str) -> str | None:
     """If a skill matches the user message, return it as a system injection.
 
     This string gets added to the LLM context so Bob follows the

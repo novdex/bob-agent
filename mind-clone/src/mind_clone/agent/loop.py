@@ -39,24 +39,92 @@ def _estimate_tokens(messages: List[dict]) -> int:
     return sum(len(str(m.get("content", ""))) // 4 for m in messages)
 
 
+TOOL_RESULT_TRUNCATE_CHARS = 2000  # Max chars for tool results during emergency compress
+
+
 def _emergency_compress(messages: List[dict], target_tokens: int) -> List[dict]:
     """Aggressively trim messages to fit within *target_tokens*.
 
-    Strategy: keep the system message and the most recent messages,
-    dropping the oldest non-system messages until the budget is met.
+    Strategy (handles edge cases):
+    1. Keep: first system message always (identity prompt).
+    2. Keep: last user message always (current request).
+    3. Truncate tool results to TOOL_RESULT_TRUNCATE_CHARS each.
+    4. Remove oldest non-system messages first.
+    5. If still over limit, truncate the user message itself.
+    6. If ALL messages are system messages, keep only the first one.
     """
     if not messages:
         return messages
 
-    system_msgs = [m for m in messages if m.get("role") == "system"]
-    non_system = [m for m in messages if m.get("role") != "system"]
-
-    # Start from the newest and work backward
-    kept: List[dict] = []
     budget_chars = target_tokens * 4
-    used = sum(len(str(m.get("content", ""))) for m in system_msgs)
 
-    for msg in reversed(non_system):
+    # Separate message types
+    first_system: Optional[dict] = None
+    other_system: List[dict] = []
+    non_system: List[dict] = []
+
+    for m in messages:
+        if m.get("role") == "system":
+            if first_system is None:
+                first_system = m
+            else:
+                other_system.append(m)
+        else:
+            non_system.append(m)
+
+    # Edge case: ALL messages are system messages
+    if not non_system:
+        if first_system is None:
+            return messages
+        # Keep only the first system message; drop the rest
+        result = [first_system]
+        logger.info(
+            "EMERGENCY_COMPRESS all_system original=%d kept=1 target=%d",
+            len(messages), target_tokens,
+        )
+        return result
+
+    # Identify the last user message (must always keep it)
+    last_user_msg: Optional[dict] = None
+    last_user_idx: int = -1
+    for i in range(len(non_system) - 1, -1, -1):
+        if non_system[i].get("role") == "user":
+            last_user_msg = non_system[i]
+            last_user_idx = i
+            break
+
+    # Step 3: Truncate tool results in all non-system messages
+    for msg in non_system:
+        if msg.get("role") == "tool":
+            content = str(msg.get("content", ""))
+            if len(content) > TOOL_RESULT_TRUNCATE_CHARS:
+                msg = msg.copy()
+                msg["content"] = content[:TOOL_RESULT_TRUNCATE_CHARS] + "... [truncated]"
+                # Update in-place by finding position
+                idx = non_system.index(msg) if msg in non_system else -1
+
+    # Rebuild truncated non_system list
+    truncated_non_system: List[dict] = []
+    for msg in non_system:
+        msg_copy = msg.copy()
+        if msg_copy.get("role") == "tool":
+            content = str(msg_copy.get("content", ""))
+            if len(content) > TOOL_RESULT_TRUNCATE_CHARS:
+                msg_copy["content"] = content[:TOOL_RESULT_TRUNCATE_CHARS] + "... [truncated]"
+        truncated_non_system.append(msg_copy)
+
+    # Calculate fixed cost (first system + last user)
+    first_system_chars = len(str(first_system.get("content", ""))) if first_system else 0
+    last_user_chars = len(str(last_user_msg.get("content", ""))) if last_user_msg else 0
+    fixed_chars = first_system_chars + last_user_chars
+
+    # Step 4: Build kept list from newest to oldest (excluding last_user which is reserved)
+    remaining = [m for i, m in enumerate(truncated_non_system) if i != last_user_idx]
+
+    kept: List[dict] = []
+    used = fixed_chars
+
+    for msg in reversed(remaining):
         msg_chars = len(str(msg.get("content", "")))
         if used + msg_chars > budget_chars:
             break
@@ -64,10 +132,34 @@ def _emergency_compress(messages: List[dict], target_tokens: int) -> List[dict]:
         used += msg_chars
 
     kept.reverse()
-    result = system_msgs + kept
+
+    # Assemble result: first_system + kept + last_user
+    result: List[dict] = []
+    if first_system:
+        result.append(first_system)
+    result.extend(kept)
+    if last_user_msg:
+        result.append(last_user_msg)
+
+    # Step 5: If still over limit and there's a single huge user message, truncate it
+    total_est = sum(len(str(m.get("content", ""))) for m in result)
+    if total_est > budget_chars and last_user_msg:
+        # Calculate how much space the user message can have
+        other_chars = total_est - len(str(last_user_msg.get("content", "")))
+        available = max(200, budget_chars - other_chars)  # At least 200 chars
+        user_content = str(last_user_msg.get("content", ""))
+        if len(user_content) > available:
+            # Find the last user message in result and truncate it
+            for i in range(len(result) - 1, -1, -1):
+                if result[i].get("role") == "user":
+                    result[i] = result[i].copy()
+                    result[i]["content"] = user_content[:available] + "... [message truncated due to context limit]"
+                    break
+
+    final_tokens = sum(len(str(m.get("content", ""))) // 4 for m in result)
     logger.info(
         "EMERGENCY_COMPRESS original=%d kept=%d estimated_tokens=%d target=%d",
-        len(messages), len(result), used // 4, target_tokens,
+        len(messages), len(result), final_tokens, target_tokens,
     )
     return result
 

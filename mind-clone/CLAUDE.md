@@ -1,4 +1,8 @@
-# CLAUDE.md
+# CLAUDE.md (Mind-Clone Backend)
+
+> **Scope:** This is the PROJECT-LEVEL guidance file for the `mind-clone/` backend only.
+> For repo-wide context (project structure, frontend, Docker, CI), see
+> [`../CLAUDE.md`](../CLAUDE.md).
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 

@@ -1,4 +1,8 @@
-"""
+"""DEPRECATED: This module is not imported anywhere.
+Functionality replaced by services/proactive_intelligence.py and cron jobs.
+Safe to delete in next cleanup cycle.
+
+Original purpose:
 Autonomy Engine — Bob's proactive behavior loop.
 
 Runs as a background async task, periodically waking up to:

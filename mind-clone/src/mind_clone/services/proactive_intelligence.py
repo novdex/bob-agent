@@ -1,4 +1,9 @@
-"""
+"""DEPRECATED: This module is not imported anywhere.
+Functionality was intended for cron-driven proactive loops but is not
+registered in factory.py or any scheduler.
+Safe to delete in next cleanup cycle.
+
+Original purpose:
 Proactive Intelligence Engine — Bob thinks ahead without being asked.
 
 Three autonomous loops that make Bob genuinely intelligent:
