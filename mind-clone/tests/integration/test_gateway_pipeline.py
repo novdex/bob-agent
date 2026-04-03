@@ -153,7 +153,7 @@ class TestFullPipelineWithMockLLM:
         # Mock execute_tool to use our mock search
         with patch("mind_clone.agent.loop.execute_tool", side_effect=_mock_search_web):
             # Mock guarded_tool_result_payload to pass through
-            mock_guarded.side_effect = lambda result, _name: json.dumps(result)
+            mock_guarded.side_effect = lambda _name, _cid, result: (json.dumps(result), False)
 
             # Run the agent turn
             response = run_agent_turn(mock_db, owner_id=1, user_message="Search for test query")
