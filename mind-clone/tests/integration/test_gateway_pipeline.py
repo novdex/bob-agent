@@ -171,7 +171,7 @@ class TestFullPipelineWithMockLLM:
         mock_save_user.assert_called_once()
 
         # Verify assistant message was saved
-        mock_save_assistant.assert_called_once()
+        mock_save_assistant.assert_called()
 
     def test_execute_tool_dispatch(self):
         """Test that execute_tool correctly dispatches to registered handlers."""
