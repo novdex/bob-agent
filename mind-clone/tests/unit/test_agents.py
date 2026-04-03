@@ -35,7 +35,7 @@ class TestAgentConfig:
     def test_defaults(self):
         cfg = AgentConfig(api_key="test-key", repo_root="/tmp/repo")
         assert cfg.api_key == "test-key"
-        assert cfg.model == "kimi-k2.5"
+        assert cfg.model == "minimax/minimax-m2.7"
         assert cfg.max_coder_retries == 3
         assert cfg.require_tests_pass is True
         assert cfg.auto_revert_on_failure is True

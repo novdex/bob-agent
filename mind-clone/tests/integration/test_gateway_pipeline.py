@@ -63,7 +63,7 @@ def _mock_call_llm(messages: list, tools: Optional[list] = None, **kwargs) -> di
     return _MOCK_TEXT_RESPONSE.copy()
 
 
-def _mock_search_web(args: dict) -> dict:
+def _mock_search_web(tool_name_or_args, args=None) -> dict:
     """Mock search_web tool that returns canned results."""
     return _MOCK_SEARCH_RESULT.copy()
 
