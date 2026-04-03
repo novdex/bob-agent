@@ -108,6 +108,7 @@ TOOL_CATEGORIES: Dict[str, set] = {
     },
     "skill_library": {
         "save_skill", "recall_skill", "list_skills", "get_skill", "archive_skill",
+        "run_chain", "create_chain",
     },
     "safe_improvement": {
         "create_skill_md", "list_skills_md", "safe_improve",

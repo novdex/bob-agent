@@ -373,7 +373,7 @@ def get_blackbox_sessions(
             ExecutionEvent.session_id,
             ExecutionEvent.created_at,
             ExecutionEvent.owner_id,
-        ).distinct(ExecutionEvent.session_id)
+        ).group_by(ExecutionEvent.session_id)
 
         if owner_id:
             query = query.filter(ExecutionEvent.owner_id == owner_id)

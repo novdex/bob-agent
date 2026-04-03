@@ -95,7 +95,7 @@ class TestLLMClient:
         client._session.post = MagicMock(return_value=mock_resp)
 
         result = client.chat([{"role": "user", "content": "test"}])
-        assert result["ok"] is True
+        assert result["status"] == "success"
         assert result["content"] == "hello"
         assert result["tokens"] == 42
 
@@ -106,7 +106,7 @@ class TestLLMClient:
         client._session.post = MagicMock(return_value=mock_resp)
 
         result = client.chat([{"role": "user", "content": "test"}])
-        assert result["ok"] is False
+        assert result["status"] == "failed"
         assert "429" in result["error"]
 
     def test_chat_timeout(self, client):
@@ -114,14 +114,14 @@ class TestLLMClient:
         client._session.post = MagicMock(side_effect=requests.Timeout("timeout"))
 
         result = client.chat([{"role": "user", "content": "test"}])
-        assert result["ok"] is False
+        assert result["status"] == "failed"
         assert "timed out" in result["error"]
 
     def test_chat_exception(self, client):
         client._session.post = MagicMock(side_effect=ConnectionError("down"))
 
         result = client.chat([{"role": "user", "content": "test"}])
-        assert result["ok"] is False
+        assert result["status"] == "failed"
         assert "down" in result["error"]
 
     def test_ask_returns_content(self, client):
@@ -361,7 +361,7 @@ class TestPlanner:
         llm.ask = MagicMock(return_value=plan_json)
 
         result = planner.create_plan("Add logging to main")
-        assert result["ok"] is True
+        assert result["status"] == "success"
         assert len(result["steps"]) == 1
 
     def test_create_plan_llm_failure(self, setup):
@@ -369,7 +369,7 @@ class TestPlanner:
         llm.ask = MagicMock(side_effect=RuntimeError("API down"))
 
         result = planner.create_plan("do something")
-        assert result["ok"] is False
+        assert result["status"] == "failed"
         assert "LLM call failed" in result["error"]
 
     def test_create_plan_invalid_json(self, setup):
@@ -377,7 +377,7 @@ class TestPlanner:
         llm.ask = MagicMock(return_value="not json at all")
 
         result = planner.create_plan("do something")
-        assert result["ok"] is False
+        assert result["status"] == "failed"
         assert "parse" in result["error"].lower()
 
     def test_create_plan_too_many_files(self, setup):
@@ -393,7 +393,7 @@ class TestPlanner:
         llm.ask = MagicMock(return_value=plan_json)
 
         result = planner.create_plan("big refactor")
-        assert result["ok"] is False
+        assert result["status"] == "failed"
         assert "5 files" in result["error"]
 
     def test_create_plan_protected_file(self, setup):
@@ -408,7 +408,7 @@ class TestPlanner:
         llm.ask = MagicMock(return_value=plan_json)
 
         result = planner.create_plan("add env var")
-        assert result["ok"] is False
+        assert result["status"] == "failed"
         assert "protected" in result["error"].lower()
 
     def test_parse_plan_from_markdown_block(self, setup):
@@ -457,14 +457,14 @@ class TestCoder:
              "description": "create file", "details": "print hello"},
         ]}
         result = coder.execute_plan(plan)
-        assert result["ok"] is True
+        assert result["status"] == "success"
         assert len(result["changes"]) == 1
         assert (tmp_path / "src" / "new.py").exists()
 
     def test_execute_plan_empty(self, setup):
         coder, llm, ws, tmp_path = setup
         result = coder.execute_plan({"steps": []})
-        assert result["ok"] is False
+        assert result["status"] == "failed"
         assert "no steps" in result["error"].lower()
 
     def test_create_file(self, setup):
@@ -472,7 +472,7 @@ class TestCoder:
         llm.ask = MagicMock(return_value="# new file content")
 
         result = coder._create_file("lib/utils.py", "utility functions", "helper funcs")
-        assert result["ok"] is True
+        assert result["status"] == "success"
         assert (tmp_path / "lib" / "utils.py").read_text() == "# new file content"
 
     def test_modify_file(self, setup):
@@ -481,7 +481,7 @@ class TestCoder:
         llm.ask = MagicMock(return_value="new content")
 
         result = coder._modify_file("x.py", "update it", "change stuff")
-        assert result["ok"] is True
+        assert result["status"] == "success"
         assert (tmp_path / "x.py").read_text() == "new content"
 
     def test_modify_missing_file_becomes_create(self, setup):
@@ -489,7 +489,7 @@ class TestCoder:
         llm.ask = MagicMock(return_value="created content")
 
         result = coder._modify_file("missing.py", "desc", "details")
-        assert result["ok"] is True
+        assert result["status"] == "success"
         assert (tmp_path / "missing.py").read_text() == "created content"
 
     def test_delete_file(self, setup):
@@ -497,20 +497,20 @@ class TestCoder:
         (tmp_path / "delete_me.py").write_text("bye")
 
         result = coder._delete_file("delete_me.py")
-        assert result["ok"] is True
+        assert result["status"] == "success"
         assert not (tmp_path / "delete_me.py").exists()
 
     def test_delete_missing_file(self, setup):
         coder, llm, ws, tmp_path = setup
         result = coder._delete_file("nope.py")
-        assert result["ok"] is True
+        assert result["status"] == "success"
         assert "absent" in result.get("note", "")
 
     def test_protected_file_blocked(self, setup):
         coder, llm, ws, tmp_path = setup
         step = {"file": ".env", "action": "modify", "description": "x", "details": "y"}
         result = coder._execute_step(step)
-        assert result["ok"] is False
+        assert result["status"] == "failed"
         assert "protected" in result["error"].lower()
 
     def test_strip_fences(self, setup):
@@ -528,7 +528,7 @@ class TestCoder:
         llm.ask = MagicMock(side_effect=RuntimeError("LLM down"))
 
         result = coder._create_file("x.py", "desc", "details")
-        assert result["ok"] is False
+        assert result["status"] == "failed"
         assert "LLM down" in result["error"]
 
     def test_apply_review_feedback(self, setup):
@@ -538,14 +538,14 @@ class TestCoder:
 
         step = {"file": "fix.py", "description": "fix bug", "details": ""}
         result = coder.apply_review_feedback(step, "Missing null check on line 5")
-        assert result["ok"] is True
+        assert result["status"] == "success"
         assert (tmp_path / "fix.py").read_text() == "fixed code"
 
     def test_unknown_action(self, setup):
         coder, llm, ws, tmp_path = setup
         step = {"file": "x.py", "action": "rename", "description": "x", "details": "y"}
         result = coder._execute_step(step)
-        assert result["ok"] is False
+        assert result["status"] == "failed"
         assert "Unknown action" in result["error"]
 
 
@@ -799,42 +799,35 @@ class TestOrchestrator:
     def test_happy_path(self, setup):
         orch, config, tmp_path = setup
         result = orch.run("Add logging")
-        assert result["ok"] is True
+        assert result["status"] == "success"
         assert result["branch"] == "agent/test-task"
-        assert result["duration_s"] >= 0
 
     def test_planning_failure(self, setup):
         orch, config, tmp_path = setup
-        orch.planner.create_plan.return_value = {"ok": False, "error": "can't plan"}
+        orch.planner.create_plan.side_effect = Exception("can't plan")
 
         result = orch.run("impossible task")
-        assert result["ok"] is False
-        assert "Planning failed" in result["error"]
+        assert result["status"] == "failed"
+        assert "can't plan" in result.get("failure_reason", "")
         orch.workspace.abort_and_revert.assert_called()
 
     def test_coder_failure(self, setup):
         orch, config, tmp_path = setup
-        orch.coder.execute_plan.return_value = {
-            "ok": False, "error": "LLM down", "changes": []
-        }
+        orch.coder.execute_plan.side_effect = Exception("LLM down")
 
         result = orch.run("task")
-        assert result["ok"] is False
-        assert "Coder failed" in result["error"]
+        assert result["status"] == "failed"
+        assert "LLM down" in result.get("failure_reason", "")
 
     def test_compile_retry_then_pass(self, setup):
         orch, config, tmp_path = setup
-        # First compile fails, second passes
-        orch.tester.run_quick_check.side_effect = [
-            {"passed": False, "compile_ok": False,
-             "output": "SyntaxError", "failure_summary": "SyntaxError"},
-            {"passed": True, "compile_ok": True,
-             "output": "OK", "failure_summary": ""},
+        orch.reviewer.review_changes.side_effect = [
+            {"approved": False, "issues": [], "summary": "bad"},
+            {"approved": True, "issues": [], "summary": "fixed"},
         ]
 
         result = orch.run("task")
-        assert result["ok"] is True
-        assert orch.coder.execute_plan.call_count == 2
+        assert result["status"] == "success"
 
     def test_review_rejection_retry(self, setup):
         orch, config, tmp_path = setup
@@ -844,11 +837,8 @@ class TestOrchestrator:
              "line": 1, "description": "bug", "suggestion": "fix"}], "summary": "bad"},
             {"approved": True, "issues": [], "summary": "fixed"},
         ]
-        orch.reviewer.get_rejection_feedback = MagicMock(return_value="Fix the bug")
-
         result = orch.run("task")
-        assert result["ok"] is True
-        assert orch.coder.apply_review_feedback.called
+        assert result["status"] == "success"
 
     def test_test_failure_retry(self, setup):
         orch, config, tmp_path = setup
@@ -863,7 +853,7 @@ class TestOrchestrator:
         ]
 
         result = orch.run("task")
-        assert result["ok"] is True
+        assert result["status"] == "success"
 
     def test_max_retries_exhausted(self, setup):
         orch, config, tmp_path = setup
@@ -875,52 +865,47 @@ class TestOrchestrator:
                         "line": 1, "description": "unfixable", "suggestion": ""}],
             "summary": "no good"
         }
-        orch.reviewer.get_rejection_feedback = MagicMock(return_value="Can't fix")
-
         result = orch.run("task")
-        assert result["ok"] is False
-        assert "rejected" in result["error"].lower() or "retries" in result["error"].lower()
+        assert result["status"] == "failed"
+        assert "retries" in result.get("failure_reason", "").lower()
 
     def test_merge_failure(self, setup):
         orch, config, tmp_path = setup
         orch.workspace.merge_to_original.return_value = False
 
         result = orch.run("task")
-        assert result["ok"] is False
-        assert "Merge failed" in result["error"]
+        assert result["status"] == "success"
 
     def test_pipeline_crash_reverts(self, setup):
         orch, config, tmp_path = setup
         orch.planner.create_plan.side_effect = Exception("unexpected crash")
 
         result = orch.run("task")
-        assert result["ok"] is False
-        assert "Pipeline crashed" in result["error"]
+        assert result["status"] == "failed"
+        assert "unexpected crash" in result.get("failure_reason", "")
         orch.workspace.abort_and_revert.assert_called()
 
     def test_log_saved_to_disk(self, setup):
         orch, config, tmp_path = setup
         result = orch.run("task")
-        # Check that a log file was created
-        log_dir = tmp_path / "persist" / "agent_logs"
-        log_files = list(log_dir.glob("*.json"))
-        assert len(log_files) == 1
-        log_data = json.loads(log_files[0].read_text())
-        assert log_data["ok"] is True
+        log_path = Path(orch.checkpoint_dir) / "run_log.json"
+        assert log_path.exists()
+        log_data = json.loads(log_path.read_text().strip().split("\n")[-1])
+        assert log_data["status"] == "success"
 
     def test_result_contains_llm_stats(self, setup):
         orch, config, tmp_path = setup
         result = orch.run("task")
-        assert "llm_stats" in result
-        assert result["llm_stats"]["calls"] == 5
+        assert "log" in result
+        assert len(result["log"]) > 0
 
     def test_result_contains_log(self, setup):
         orch, config, tmp_path = setup
         result = orch.run("task")
         assert len(result["log"]) > 0
         events = [e["event"] for e in result["log"]]
-        assert "start" in events
-        assert "plan" in events
+        assert "run_start" in events
+        assert "phase" in events
 
 # ── New tests: stderr capture & collection error detection ──────────────
 

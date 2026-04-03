@@ -2,13 +2,13 @@
   "mcpServers": {
     "bob_team": {
       "command": "python",
-      "args": ["C:\\Users\\mader\\OneDrive\\Desktop\\ai-agent-platform\\mind-clone\\scripts\\bob_team_mcp.py"],
-      "cwd": "C:\\Users\\mader\\OneDrive\\Desktop\\ai-agent-platform"
+      "args": ["mind-clone/scripts/bob_team_mcp.py"],
+      "cwd": "."
     },
     "bob_dev": {
       "command": "python",
-      "args": ["C:\\Users\\mader\\OneDrive\\Desktop\\ai-agent-platform\\mind-clone\\scripts\\bob_dev_mcp.py"],
-      "cwd": "C:\\Users\\mader\\OneDrive\\Desktop\\ai-agent-platform"
+      "args": ["mind-clone/scripts/bob_dev_mcp.py"],
+      "cwd": "."
     }
   }
 }

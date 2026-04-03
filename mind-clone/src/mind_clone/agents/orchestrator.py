@@ -50,7 +50,7 @@ class Orchestrator:
         
         # Checkpoint directory for experiment loops
         self.checkpoint_dir = os.path.join(
-            self.config.workspace_root or os.getcwd(),
+            self.config.repo_root or os.getcwd(),
             ".mind_clone",
             "checkpoints"
         )
@@ -218,7 +218,7 @@ class Orchestrator:
             Populated result dict
         """
         iteration = start_iteration
-        max_iterations = self.config.max_retries + 1
+        max_iterations = self.config.max_coder_retries + 1
         
         while iteration < max_iterations:
             self._log_event("iteration_start", f"Iteration {iteration + 1}/{max_iterations}")
@@ -302,7 +302,7 @@ class Orchestrator:
 
                 # 5. Tester runs tests
                 self._log_event("phase", "testing")
-                tests = self.tester.run_tests()
+                tests = self.tester.run_full_check()
                 result["tests"] = tests
                 self._log_event("tests_complete", f"passed={tests.get('passed', 0)}, failed={tests.get('failed', 0)}")
                 
@@ -316,7 +316,7 @@ class Orchestrator:
                     "tests": tests,
                 })
 
-                if not tests.get("all_passed", False):
+                if not tests.get("passed", False):
                     # If tests failed, Coder fixes (up to max_retries)
                     self._log_event("tests_failed", tests.get("message", "Tests failed"))
                     iteration += 1
@@ -341,7 +341,8 @@ class Orchestrator:
 
                 # 6. Commit and merge to original branch
                 self._log_event("phase", "commit_merge")
-                commit_result = self.workspace.commit_and_merge(branch)
+                self.workspace.commit_changes(f"agent: {task[:60]}")
+                commit_result = {"merged": self.workspace.merge_to_original()}
                 result["commit"] = commit_result
                 self._log_event("commit_complete", commit_result.get("commit_sha", ""))
                 
@@ -379,7 +380,7 @@ class Orchestrator:
                 
                 # Revert everything on fatal error
                 self._log_event("revert", "Reverting all changes due to fatal error")
-                self.workspace.revert_all()
+                self.workspace.abort_and_revert()
                 
                 result["status"] = "failed"
                 result["failure_reason"] = f"fatal_error: {str(e)}"
@@ -441,6 +442,6 @@ class Orchestrator:
     def cleanup(self) -> None:
         """Clean up workspace resources."""
         self._log_event("cleanup", "Starting cleanup")
-        self.workspace.cleanup()
+        self.workspace.cleanup_branch()
         self.clear_checkpoint()
         self._log_event("cleanup_complete", "Cleanup finished")

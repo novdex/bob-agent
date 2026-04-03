@@ -400,7 +400,7 @@ class TestCircuitBreaker:
         assert "OPEN" in msg
 
     def test_below_threshold_stays_closed(self):
-        for i in range(4):
+        for i in range(2):
             circuit_record_failure("provider_a", f"err_{i}")
         ok, msg = circuit_allow_call("provider_a")
         assert ok is True

@@ -1,7 +1,9 @@
 """
 Tests for core/model_router.py — Model routing utilities.
 """
+import os
 import pytest
+from unittest.mock import patch
 from mind_clone.core.model_router import (
     select_model_for_task,
     get_model_health,
@@ -27,10 +29,13 @@ class TestModelRouter:
         assert isinstance(m1, str)
         assert isinstance(m2, str)
 
-    def test_get_model_health(self):
-        health = get_model_health("test-model")
-        assert health["ok"] is True
-        assert health["model"] == "test-model"
+    async def test_get_model_health(self):
+        with patch("mind_clone.core.model_router._check_model_connectivity",
+                   return_value={"ok": True, "model": "test-model", "status": "healthy"}):
+            with patch.dict(os.environ, {"KIMI_API_KEY": "test-key"}):
+                health = await get_model_health("test-model")
+                assert health["ok"] is True
+                assert health["model"] == "test-model"
 
     def test_record_model_success_no_crash(self):
         """record_model_success should not raise."""

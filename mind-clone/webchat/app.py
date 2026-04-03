@@ -1,8 +1,10 @@
 from flask import Flask, request, jsonify, render_template_string
+from markupsafe import escape
 import time
 import os
 
 app = Flask(__name__)
+app.jinja_env.autoescape = True
 
 # Simple in-memory message storage
 messages = []
@@ -68,6 +70,14 @@ HTML_TEMPLATE = '''
 </html>
 '''
 
+@app.after_request
+def set_security_headers(response):
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    return response
+
+
 @app.route("/")
 def index():
     return render_template_string(HTML_TEMPLATE, messages=messages)
@@ -95,7 +105,9 @@ def send_message():
 
 @app.route("/api/send", methods=["POST"])
 def api_send_message():
-    data = request.get_json()
+    data = request.get_json(silent=True)
+    if not data or not isinstance(data, dict):
+        return jsonify({"status": "error", "message": "Invalid JSON"}), 400
     sender = data.get("sender")
     text = data.get("text")
     if sender in users and text:

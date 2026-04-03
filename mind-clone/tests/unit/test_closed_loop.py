@@ -199,10 +199,10 @@ class TestForecastConfidenceAdjustment:
         assert "[LOW CONFIDENCE" not in result["title"]
 
     @patch("mind_clone.core.closed_loop.CLOSED_LOOP_ENABLED", False)
-    def test_disabled_returns_none(self):
+    def test_disabled_returns_step_unmodified(self):
         step = {"title": "Task"}
         result = cl_adjust_for_forecast_confidence(10, step)
-        assert result is None  # Returns None when disabled
+        assert result == {"title": "Task"}  # Returns step unmodified when disabled
 
 
 # ---------------------------------------------------------------------------

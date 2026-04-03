@@ -96,7 +96,7 @@ class TestFullPipelineWithMockLLM:
     @patch("mind_clone.agent.loop.prepare_messages_for_llm")
     @patch("mind_clone.agent.loop.load_identity")
     @patch("mind_clone.agent.loop.effective_tool_definitions")
-    @patch("mind_clone.agent.loop.check_tool_allowed", return_value=True)
+    @patch("mind_clone.agent.loop.check_tool_allowed", return_value=(True, None))
     @patch("mind_clone.agent.loop.requires_approval", return_value=False)
     @patch("mind_clone.agent.loop.guarded_tool_result_payload")
     def test_full_pipeline_with_mock_llm(

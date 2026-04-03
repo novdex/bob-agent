@@ -40,15 +40,20 @@ class TestTokenEstimation:
 class TestGetAvailableModels:
     """Test model listing."""
 
-    def test_returns_list(self):
+    @patch("mind_clone.agent.llm._ensure_chain", return_value=[
+        {"name": "test", "model": "test-model", "base_url": "http://test", "api_key": "k", "format": "openai", "timeout": 60},
+    ])
+    def test_returns_list(self, _mock):
         models = get_available_models()
         assert isinstance(models, list)
         assert len(models) >= 1
 
-    def test_primary_model_included(self):
-        from mind_clone.config import settings
+    @patch("mind_clone.agent.llm._ensure_chain", return_value=[
+        {"name": "test", "model": "test-model", "base_url": "http://test", "api_key": "k", "format": "openai", "timeout": 60},
+    ])
+    def test_primary_model_included(self, _mock):
         models = get_available_models()
-        assert settings.kimi_model in models
+        assert "test-model" in models
 
 
 class TestEstimateCost:
@@ -87,11 +92,18 @@ class TestCircuitBreaker:
         assert cb1 is not cb2
 
 
+_FAKE_CHAIN = [
+    {"name": "test", "model": "test-model", "base_url": "http://test/v1",
+     "api_key": "sk-test", "format": "openai", "timeout": 60},
+]
+
+
 class TestCallLLM:
     """Test call_llm with mocked HTTP."""
 
+    @patch("mind_clone.agent.llm._ensure_chain", return_value=_FAKE_CHAIN)
     @patch("mind_clone.agent.llm.httpx.post")
-    def test_successful_call(self, mock_post):
+    def test_successful_call(self, mock_post, _chain):
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
@@ -105,8 +117,9 @@ class TestCallLLM:
         assert result["ok"] is True
         assert result["content"] == "Hello!"
 
+    @patch("mind_clone.agent.llm._ensure_chain", return_value=_FAKE_CHAIN)
     @patch("mind_clone.agent.llm.httpx.post")
-    def test_timeout_returns_error(self, mock_post):
+    def test_timeout_returns_error(self, mock_post, _chain):
         import httpx
         mock_post.side_effect = httpx.TimeoutException("timeout")
 
@@ -114,8 +127,9 @@ class TestCallLLM:
         assert result["ok"] is False
         assert "timed out" in result["error"]
 
+    @patch("mind_clone.agent.llm._ensure_chain", return_value=_FAKE_CHAIN)
     @patch("mind_clone.agent.llm.httpx.post")
-    def test_http_error(self, mock_post):
+    def test_http_error(self, mock_post, _chain):
         import httpx
         mock_response = MagicMock()
         mock_response.status_code = 500

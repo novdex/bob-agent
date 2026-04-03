@@ -52,6 +52,11 @@ node_modules/
 # Runtime data
 mind-clone/persist/
 
+# Binary archives
+*.zip
+*.tar.gz
+*.rar
+
 # OS artifacts
 Thumbs.db
 .DS_Store
@@ -85,3 +90,6 @@ user_preferences.txt
 # CI artifacts
 oracle-results.xml
 coverage.xml
+
+# Temp files
+*.tmp

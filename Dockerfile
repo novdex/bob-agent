@@ -18,9 +18,10 @@ RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Install Python dependencies
-COPY pyproject.toml ./
+COPY mind-clone/pyproject.toml ./mind-clone/
+COPY mind-clone/src/ ./mind-clone/src/
 RUN pip install --upgrade pip && \
-    pip install -e ".[all]"
+    pip install "./mind-clone[all]" 2>/dev/null || pip install "./mind-clone"
 
 # Production stage
 FROM python:3.12-slim AS production
@@ -47,7 +48,7 @@ WORKDIR $APP_HOME
 COPY --from=builder /opt/venv /opt/venv
 
 # Copy application code
-COPY --chown=appuser:appuser src/ ./src/
+COPY --chown=appuser:appuser mind-clone/src/ ./src/
 COPY --chown=appuser:appuser mind-clone-ui/dist/ ./static/
 
 # Create necessary directories
