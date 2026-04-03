@@ -457,14 +457,14 @@ class TestCoder:
              "description": "create file", "details": "print hello"},
         ]}
         result = coder.execute_plan(plan)
-        assert result["status"] == "success"
+        assert result["ok"] is True
         assert len(result["changes"]) == 1
         assert (tmp_path / "src" / "new.py").exists()
 
     def test_execute_plan_empty(self, setup):
         coder, llm, ws, tmp_path = setup
         result = coder.execute_plan({"steps": []})
-        assert result["status"] == "failed"
+        assert result["ok"] is False
         assert "no steps" in result["error"].lower()
 
     def test_create_file(self, setup):
@@ -472,7 +472,7 @@ class TestCoder:
         llm.ask = MagicMock(return_value="# new file content")
 
         result = coder._create_file("lib/utils.py", "utility functions", "helper funcs")
-        assert result["status"] == "success"
+        assert result["ok"] is True
         assert (tmp_path / "lib" / "utils.py").read_text() == "# new file content"
 
     def test_modify_file(self, setup):
@@ -481,7 +481,7 @@ class TestCoder:
         llm.ask = MagicMock(return_value="new content")
 
         result = coder._modify_file("x.py", "update it", "change stuff")
-        assert result["status"] == "success"
+        assert result["ok"] is True
         assert (tmp_path / "x.py").read_text() == "new content"
 
     def test_modify_missing_file_becomes_create(self, setup):
@@ -489,7 +489,7 @@ class TestCoder:
         llm.ask = MagicMock(return_value="created content")
 
         result = coder._modify_file("missing.py", "desc", "details")
-        assert result["status"] == "success"
+        assert result["ok"] is True
         assert (tmp_path / "missing.py").read_text() == "created content"
 
     def test_delete_file(self, setup):
@@ -497,20 +497,20 @@ class TestCoder:
         (tmp_path / "delete_me.py").write_text("bye")
 
         result = coder._delete_file("delete_me.py")
-        assert result["status"] == "success"
+        assert result["ok"] is True
         assert not (tmp_path / "delete_me.py").exists()
 
     def test_delete_missing_file(self, setup):
         coder, llm, ws, tmp_path = setup
         result = coder._delete_file("nope.py")
-        assert result["status"] == "success"
+        assert result["ok"] is True
         assert "absent" in result.get("note", "")
 
     def test_protected_file_blocked(self, setup):
         coder, llm, ws, tmp_path = setup
         step = {"file": ".env", "action": "modify", "description": "x", "details": "y"}
         result = coder._execute_step(step)
-        assert result["status"] == "failed"
+        assert result["ok"] is False
         assert "protected" in result["error"].lower()
 
     def test_strip_fences(self, setup):
@@ -528,7 +528,7 @@ class TestCoder:
         llm.ask = MagicMock(side_effect=RuntimeError("LLM down"))
 
         result = coder._create_file("x.py", "desc", "details")
-        assert result["status"] == "failed"
+        assert result["ok"] is False
         assert "LLM down" in result["error"]
 
     def test_apply_review_feedback(self, setup):
@@ -538,14 +538,14 @@ class TestCoder:
 
         step = {"file": "fix.py", "description": "fix bug", "details": ""}
         result = coder.apply_review_feedback(step, "Missing null check on line 5")
-        assert result["status"] == "success"
+        assert result["ok"] is True
         assert (tmp_path / "fix.py").read_text() == "fixed code"
 
     def test_unknown_action(self, setup):
         coder, llm, ws, tmp_path = setup
         step = {"file": "x.py", "action": "rename", "description": "x", "details": "y"}
         result = coder._execute_step(step)
-        assert result["status"] == "failed"
+        assert result["ok"] is False
         assert "Unknown action" in result["error"]
 
 

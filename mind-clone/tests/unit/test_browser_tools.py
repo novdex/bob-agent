@@ -61,8 +61,9 @@ class TestBrowserOpen:
         result = tool_browser_open({"url": "  "})
         assert result["ok"] is False
 
+    @patch("mind_clone.core.security.apply_url_safety_guard", return_value=(True, ""))
     @patch("mind_clone.tools.browser._create_session")
-    def test_successful_open(self, mock_create):
+    def test_successful_open(self, mock_create, _mock_ssrf):
         from mind_clone.tools import browser
         from mind_clone.tools.browser import tool_browser_open
         session, page = _inject_mock_session(browser)
