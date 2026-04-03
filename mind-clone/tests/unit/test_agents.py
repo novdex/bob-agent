@@ -95,7 +95,7 @@ class TestLLMClient:
         client._session.post = MagicMock(return_value=mock_resp)
 
         result = client.chat([{"role": "user", "content": "test"}])
-        assert result["status"] == "success"
+        assert result["ok"] is True
         assert result["content"] == "hello"
         assert result["tokens"] == 42
 
@@ -106,7 +106,7 @@ class TestLLMClient:
         client._session.post = MagicMock(return_value=mock_resp)
 
         result = client.chat([{"role": "user", "content": "test"}])
-        assert result["status"] == "failed"
+        assert result["ok"] is False
         assert "429" in result["error"]
 
     def test_chat_timeout(self, client):
@@ -114,14 +114,14 @@ class TestLLMClient:
         client._session.post = MagicMock(side_effect=requests.Timeout("timeout"))
 
         result = client.chat([{"role": "user", "content": "test"}])
-        assert result["status"] == "failed"
+        assert result["ok"] is False
         assert "timed out" in result["error"]
 
     def test_chat_exception(self, client):
         client._session.post = MagicMock(side_effect=ConnectionError("down"))
 
         result = client.chat([{"role": "user", "content": "test"}])
-        assert result["status"] == "failed"
+        assert result["ok"] is False
         assert "down" in result["error"]
 
     def test_ask_returns_content(self, client):
@@ -361,7 +361,7 @@ class TestPlanner:
         llm.ask = MagicMock(return_value=plan_json)
 
         result = planner.create_plan("Add logging to main")
-        assert result["status"] == "success"
+        assert result["ok"] is True
         assert len(result["steps"]) == 1
 
     def test_create_plan_llm_failure(self, setup):
@@ -369,7 +369,7 @@ class TestPlanner:
         llm.ask = MagicMock(side_effect=RuntimeError("API down"))
 
         result = planner.create_plan("do something")
-        assert result["status"] == "failed"
+        assert result["ok"] is False
         assert "LLM call failed" in result["error"]
 
     def test_create_plan_invalid_json(self, setup):
@@ -377,7 +377,7 @@ class TestPlanner:
         llm.ask = MagicMock(return_value="not json at all")
 
         result = planner.create_plan("do something")
-        assert result["status"] == "failed"
+        assert result["ok"] is False
         assert "parse" in result["error"].lower()
 
     def test_create_plan_too_many_files(self, setup):
@@ -393,7 +393,7 @@ class TestPlanner:
         llm.ask = MagicMock(return_value=plan_json)
 
         result = planner.create_plan("big refactor")
-        assert result["status"] == "failed"
+        assert result["ok"] is False
         assert "5 files" in result["error"]
 
     def test_create_plan_protected_file(self, setup):
@@ -408,7 +408,7 @@ class TestPlanner:
         llm.ask = MagicMock(return_value=plan_json)
 
         result = planner.create_plan("add env var")
-        assert result["status"] == "failed"
+        assert result["ok"] is False
         assert "protected" in result["error"].lower()
 
     def test_parse_plan_from_markdown_block(self, setup):
