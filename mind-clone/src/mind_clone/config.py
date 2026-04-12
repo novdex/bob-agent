@@ -283,6 +283,13 @@ class Settings(BaseSettings):
     lesson_max_per_user: int = 400
 
     # =========================================================================
+    # Embedding & Vector Store
+    # =========================================================================
+    embedding_model: str = Field(default="all-MiniLM-L6-v2", alias="EMBEDDING_MODEL")
+    embedding_dim: int = Field(default=384, alias="EMBEDDING_DIM")
+    chroma_persist_dir: str = Field(default="~/.mind-clone/chroma", alias="CHROMA_PERSIST_DIR")
+
+    # =========================================================================
     # Blackbox Logging
     # =========================================================================
     blackbox_enabled: bool = Field(default=True, alias="BLACKBOX_ENABLED")

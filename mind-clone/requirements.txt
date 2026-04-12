@@ -20,3 +20,5 @@ mss>=10.1.0
 pywinauto>=0.6.8
 python-telegram-bot>=20.0
 selenium>=4.0.0
+sentence-transformers>=2.2.0
+chromadb>=0.4.0

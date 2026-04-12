@@ -1,129 +1,67 @@
 """
-GloVe Word Vector Embedding System (AGI Pillar - Memory).
+Sentence Embedding System (AGI Pillar - Memory).
 
-Uses pre-trained GloVe 6B 100d word vectors for semantic similarity.
-Pure Python + numpy - no native DLL extensions needed.
-Provides embeddings for memory search, lesson retrieval, task artifacts,
-episodic memory, and world model queries.
+Uses sentence-transformers (all-MiniLM-L6-v2) for semantic similarity.
+Generates 384-dimensional embeddings that understand full sentences.
+Runs locally, no API key needed.
 """
 
 from __future__ import annotations
 
 import logging
-import os
-import re
 import threading
-import zipfile
-from io import BytesIO
-from pathlib import Path
+from typing import List
 
 import numpy as np
-import requests
 
 log = logging.getLogger("mind_clone")
 
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-GLOVE_DIM = 100  # 100-dimensional GloVe vectors
-GLOVE_VOCAB_LIMIT = 50_000  # Top 50K words covers >99% of typical text
-GLOVE_MODEL_NAME = "glove.6B.100d.txt"
-GLOVE_ZIP_URL = "https://nlp.stanford.edu/data/glove.6B.zip"
+EMBEDDING_DIM = 384
+EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
+GLOVE_DIM = EMBEDDING_DIM  # backward compat alias
 
-# ---------------------------------------------------------------------------
-# Module state (thread-safe lazy singleton)
-# ---------------------------------------------------------------------------
-# CONFIRMED LAZY: Vectors are NOT loaded at import time.  _glove_vectors
-# starts as None and is only populated on the first call to
-# _load_glove_vectors(), which is invoked by get_embedding().
-# This means importing this module has zero startup cost.
-# ---------------------------------------------------------------------------
-_glove_vectors: dict[str, np.ndarray] | None = None
-_glove_lock = threading.Lock()
-
-# Shared requests session for downloads
-_session = requests.Session()
+_model = None
+_model_lock = threading.Lock()
 
 
-def _glove_cache_dir() -> Path:
-    """Return cache directory for GloVe model files.
-
-    Always uses ``~/.mind-clone/models`` to stay consistent with the
-    single runtime directory convention.
-    """
-    return Path.home() / ".mind-clone" / "models"
-
-
-def _download_glove_if_needed() -> Path:
-    """Download GloVe vectors if not cached. Returns path to the text file."""
-    cache = _glove_cache_dir()
-    cache.mkdir(parents=True, exist_ok=True)
-    glove_path = cache / GLOVE_MODEL_NAME
-    if glove_path.exists():
-        return glove_path
-
-    log.info("GLOVE_DOWNLOAD starting (~330MB one-time download)...")
-    resp = _session.get(GLOVE_ZIP_URL, stream=True, timeout=600)
-    resp.raise_for_status()
-    data = b"".join(resp.iter_content(chunk_size=1024 * 1024))
-    log.info("GLOVE_DOWNLOAD extracting %s...", GLOVE_MODEL_NAME)
-    with zipfile.ZipFile(BytesIO(data)) as z:
-        z.extract(GLOVE_MODEL_NAME, str(cache))
-    log.info("GLOVE_DOWNLOAD done: %s", glove_path)
-    return glove_path
-
-
-def _load_glove_vectors() -> dict[str, np.ndarray]:
-    """Load GloVe vectors from disk. Called once, cached in memory."""
-    global _glove_vectors
-    with _glove_lock:
-        if _glove_vectors is not None:
-            return _glove_vectors
+def _ensure_model():
+    global _model
+    if _model is not None:
+        return _model
+    with _model_lock:
+        if _model is not None:
+            return _model
         try:
-            glove_path = _download_glove_if_needed()
-            vectors: dict[str, np.ndarray] = {}
-            with open(glove_path, "r", encoding="utf-8") as f:
-                for i, line in enumerate(f):
-                    if i >= GLOVE_VOCAB_LIMIT:
-                        break
-                    parts = line.rstrip().split(" ")
-                    word = parts[0]
-                    vec = np.array([float(x) for x in parts[1:]], dtype=np.float32)
-                    vectors[word] = vec
-            _glove_vectors = vectors
-            log.info("GLOVE_LOADED %d word vectors, dim=%d", len(vectors), GLOVE_DIM)
-            return vectors
+            from sentence_transformers import SentenceTransformer
+            _model = SentenceTransformer(EMBEDDING_MODEL_NAME)
+            log.info("EMBEDDING_MODEL_LOADED model=%s dim=%d", EMBEDDING_MODEL_NAME, EMBEDDING_DIM)
+            return _model
         except Exception as exc:
-            log.error("GLOVE_LOAD_FAILED: %s", exc)
-            _glove_vectors = {}
-            return {}
+            log.error("EMBEDDING_MODEL_LOAD_FAILED: %s", exc)
+            return None
 
-
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
 
 def get_embedding(text: str) -> np.ndarray:
-    """Generate a normalized embedding for text by averaging GloVe word vectors."""
-    vectors = _load_glove_vectors()
-    if not vectors:
-        return np.zeros(GLOVE_DIM, dtype=np.float32)
-    words = re.findall(r"[a-zA-Z]+", text.lower())
-    vecs = [vectors[w] for w in words if w in vectors]
-    if not vecs:
-        return np.zeros(GLOVE_DIM, dtype=np.float32)
-    avg = np.mean(vecs, axis=0)
-    norm = np.linalg.norm(avg)
-    return avg / max(norm, 1e-9)
+    if not text or not text.strip():
+        return np.zeros(EMBEDDING_DIM, dtype=np.float32)
+    model = _ensure_model()
+    if model is None:
+        return np.zeros(EMBEDDING_DIM, dtype=np.float32)
+    vec = model.encode(text, normalize_embeddings=True, show_progress_bar=False)
+    return vec.astype(np.float32)
 
 
-def get_embeddings_batch(texts: list[str]) -> list[np.ndarray]:
-    """Generate embeddings for multiple texts."""
-    return [get_embedding(t) for t in texts]
+def get_embeddings_batch(texts: List[str]) -> List[np.ndarray]:
+    if not texts:
+        return []
+    model = _ensure_model()
+    if model is None:
+        return [np.zeros(EMBEDDING_DIM, dtype=np.float32) for _ in texts]
+    vecs = model.encode(texts, normalize_embeddings=True, batch_size=32, show_progress_bar=False)
+    return [v.astype(np.float32) for v in vecs]
 
 
 def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
-    """Compute cosine similarity between two vectors."""
     norm_a = np.linalg.norm(a)
     norm_b = np.linalg.norm(b)
     if norm_a < 1e-9 or norm_b < 1e-9:
@@ -132,10 +70,8 @@ def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
 
 
 def embedding_to_bytes(vec: np.ndarray) -> bytes:
-    """Serialize numpy array to bytes for SQLite storage."""
     return vec.astype(np.float32).tobytes()
 
 
 def bytes_to_embedding(data: bytes) -> np.ndarray:
-    """Deserialize bytes back to numpy array."""
     return np.frombuffer(data, dtype=np.float32).copy()
