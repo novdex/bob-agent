@@ -33,7 +33,7 @@ def _ensure_model():
             return _model
         try:
             from sentence_transformers import SentenceTransformer
-            _model = SentenceTransformer(EMBEDDING_MODEL_NAME)
+            _model = SentenceTransformer(EMBEDDING_MODEL_NAME, local_files_only=True)
             log.info("EMBEDDING_MODEL_LOADED model=%s dim=%d", EMBEDDING_MODEL_NAME, EMBEDDING_DIM)
             return _model
         except Exception as exc:
